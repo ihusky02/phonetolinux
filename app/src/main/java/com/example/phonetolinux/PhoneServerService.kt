@@ -4,8 +4,12 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
+import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Environment
 import android.os.IBinder
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
@@ -35,7 +39,6 @@ class PhoneServerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Natychmiast rejestrujemy usługę jako Foreground, żeby Android jej nie zamknął
         createNotificationChannel()
         val notification = createNotification("PhonetoLinux działa w tle")
 
@@ -132,15 +135,71 @@ class PhoneServerService : Service() {
     private fun handleClient(socket: Socket) {
         try {
             val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
-            val line = reader.readLine()
+            val requestLine = reader.readLine() ?: return
+
+            var contentLength = 0
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                if (line.isNullOrEmpty()) break
+                if (line.startsWith("Content-Length:", ignoreCase = true)) {
+                    contentLength = line.substring(15).trim().toIntOrNull() ?: 0
+                }
+            }
 
             val output = socket.getOutputStream()
-            val response: String
+            var response: String
 
-            if (line != null && line.contains("/contacts")) {
+            if (requestLine.contains("/contacts")) {
                 val jsonContacts = fetchContactsJson()
                 response = "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n$jsonContacts"
-            } else {
+            }
+            else if (requestLine.contains("/send-sms")) {
+                val charBuffer = CharArray(contentLength)
+                reader.read(charBuffer)
+                val body = String(charBuffer)
+
+                val phone = extractJsonValue(body, "phone")
+                val message = extractJsonValue(body, "message")
+                val success = sendSmsToPhone(phone, message)
+
+                response = if (success) "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"success\"}"
+                else "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"failed\"}"
+            }
+            else if (requestLine.contains("/wifi")) {
+                val charBuffer = CharArray(contentLength)
+                reader.read(charBuffer)
+                val body = String(charBuffer)
+                val enable = extractJsonValue(body, "enable").lowercase() == "true"
+
+                val success = setWifiEnabled(enable)
+                response = if (success) "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"success\"}"
+                else "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"failed\"}"
+            }
+            else if (requestLine.contains("/audio")) {
+                val charBuffer = CharArray(contentLength)
+                reader.read(charBuffer)
+                val body = String(charBuffer)
+                val mode = extractJsonValue(body, "mode") // "silent", "vibrate", "normal"
+
+                val success = setAudioMode(mode)
+                response = if (success) "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"success\"}"
+                else "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"failed\"}"
+            }
+            else if (requestLine.contains("/cellular")) {
+                val charBuffer = CharArray(contentLength)
+                reader.read(charBuffer)
+                val body = String(charBuffer)
+                val enable = extractJsonValue(body, "enable").lowercase() == "true"
+
+                val success = setCellularDataEnabled(enable)
+                response = if (success) "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"success\"}"
+                else "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"failed\"}"
+            }
+            else if (requestLine.contains("/storage")) {
+                val fileListJson = getStorageFilesJson()
+                response = "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n$fileListJson"
+            }
+            else {
                 response = "HTTP/1.1 404 Not Found\r\n\r\nNot Found"
             }
 
@@ -149,6 +208,89 @@ class PhoneServerService : Service() {
             socket.close()
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    private fun extractJsonValue(json: String, key: String): String {
+        return try {
+            val regex = "\"$key\"\\s*:\\s*\"([^\"]*)\"".toRegex()
+            val match = regex.find(json)
+            match?.groups?.get(1)?.value ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private fun setWifiEnabled(enable: Boolean): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                @Suppress("DEPRECATION")
+                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                @Suppress("DEPRECATION")
+                wifiManager.isWifiEnabled = enable
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun setAudioMode(mode: String): Boolean {
+        return try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            when (mode.lowercase()) {
+                "silent" -> audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
+                "vibrate" -> audioManager.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+                "normal" -> audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                else -> return false
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun setCellularDataEnabled(enable: Boolean): Boolean {
+        return try {
+            val intent = Intent(android.provider.Settings.ACTION_DATA_ROAMING_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            applicationContext.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun getStorageFilesJson(): String {
+        return try {
+            val path = Environment.getExternalStorageDirectory()
+            val files = path.listFiles() ?: arrayOf()
+            val jsonList = files.map { "{\"name\":\"${it.name}\",\"isDirectory\":${it.isDirectory}}" }
+            "[${jsonList.joinToString(",")}]"
+        } catch (e: Exception) {
+            "[]"
+        }
+    }
+
+    private fun sendSmsToPhone(phoneNumber: String, message: String): Boolean {
+        return try {
+            if (phoneNumber.isEmpty() || message.isEmpty()) return false
+
+            val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                applicationContext.getSystemService(android.telephony.SmsManager::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                android.telephony.SmsManager.getDefault()
+            }
+
+            smsManager?.sendTextMessage(phoneNumber, null, message, null, null)
+            true
+        } catch (e: Exception) {
+            Log.e("PhoneToLinux", "Błąd wysyłania SMS: ${e.message}")
+            false
         }
     }
 

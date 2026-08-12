@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -27,7 +28,7 @@ class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
-        triggerServiceAndSettings()
+        checkStoragePermissionAndStart()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,7 +52,8 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.SEND_SMS,
-            Manifest.permission.RECEIVE_SMS
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.BLUETOOTH_CONNECT
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -66,8 +68,27 @@ class MainActivity : ComponentActivity() {
             serviceStatusText = "Status: Prośba o uprawnienia..."
             requestPermissionLauncher.launch(missingPermissions.toTypedArray())
         } else {
-            triggerServiceAndSettings()
+            checkStoragePermissionAndStart()
         }
+    }
+
+    private fun checkStoragePermissionAndStart() {
+        // Sprawdzanie uprawnienia zarządzania pamięcią dla Androida 11+ (API 30+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    startActivity(intent)
+                }
+                return
+            }
+        }
+        triggerServiceAndSettings()
     }
 
     private fun triggerServiceAndSettings() {
