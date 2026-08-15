@@ -22,7 +22,10 @@ class NotificationBridgeService : NotificationListenerService() {
 
             Log.d("PhoneToLinuxNotif", "Pakiet: $packageName | Od: $title | Treść: $text")
 
-            // W tym miejscu powiadomienie może być wysyłane dalej do komputera
+            // Wysyłamy powiadomienie przez WebSocket do komputera w czasie rzeczywistym
+            if (packageName.contains("messaging") || packageName.contains("sms") || text.isNotBlank()) {
+                PhoneServerService.broadcastSms(sender = title, message = text)
+            }
         }
     }
 

@@ -3,39 +3,40 @@ package com.example.phonetolinux.service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
-import android.telephony.PhoneStateListener
-import android.telephony.SmsManager
-import android.telephony.TelephonyCallback
-import android.telephony.TelephonyManager
-import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.example.phonetolinux.MainActivity
+import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.PrintWriter
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
-import java.util.concurrent.Executors
 
 class PhoneServerService : Service() {
 
-    private val executor = Executors.newSingleThreadExecutor()
     private var serverSocket: ServerSocket? = null
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isRunning = false
-    private lateinit var telephonyManager: TelephonyManager
 
     companion object {
         const val CHANNEL_ID = "PhoneToLinuxChannel"
         const val PORT = 5000
+
+        fun broadcastSms(sender: String, message: String) {
+            // Metoda wywoływana przez NotificationBridgeService przy odebraniu SMS-a
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
-        val notification = createNotification("PhonetoLinux działa w tle")
+        val notification = createNotification("PhonetoLinux Serwer działa w tle")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -43,10 +44,7 @@ class PhoneServerService : Service() {
             startForeground(1, notification)
         }
 
-        telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
-        setupCallStateListener()
         startHttpServer()
-
         return START_STICKY
     }
 
@@ -56,9 +54,7 @@ class PhoneServerService : Service() {
                 CHANNEL_ID,
                 "PhonetoLinux Serwer w tle",
                 NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Kanał wymagany do działania serwera w tle"
-            }
+            )
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
@@ -74,55 +70,23 @@ class PhoneServerService : Service() {
             .build()
     }
 
-    private fun setupCallStateListener() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            try {
-                telephonyManager.registerTelephonyCallback(
-                    mainExecutor,
-                    object : TelephonyCallback(), TelephonyCallback.CallStateListener {
-                        override fun onCallStateChanged(state: Int) {
-                            handleCallState(state)
-                        }
-                    }
-                )
-            } catch (e: Exception) {
-                fallbackPhoneStateListener()
-            }
-        } else {
-            fallbackPhoneStateListener()
-        }
-    }
-
-    private fun fallbackPhoneStateListener() {
-        @Suppress("DEPRECATION")
-        telephonyManager.listen(object : PhoneStateListener() {
-            @Deprecated("Deprecated in Java")
-            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                super.onCallStateChanged(state, phoneNumber)
-                handleCallState(state)
-            }
-        }, PhoneStateListener.LISTEN_CALL_STATE)
-    }
-
-    private fun handleCallState(state: Int) {
-        val status = when (state) {
-            TelephonyManager.CALL_STATE_RINGING -> "RINGING"
-            TelephonyManager.CALL_STATE_OFFHOOK -> "ACTIVE"
-            TelephonyManager.CALL_STATE_IDLE -> "IDLE"
-            else -> "UNKNOWN"
-        }
-        Log.d("PhoneToLinux", "Stan połączenia: $status")
-    }
-
     private fun startHttpServer() {
         if (isRunning) return
         isRunning = true
-        executor.execute {
+
+        serviceScope.launch {
             try {
                 serverSocket = ServerSocket(PORT)
                 while (isRunning) {
-                    val socket = serverSocket?.accept()
-                    socket?.let { handleClient(it) }
+                    try {
+                        val clientSocket = serverSocket?.accept() ?: break
+                        launch(Dispatchers.IO) {
+                            handleClient(clientSocket)
+                        }
+                    } catch (e: Exception) {
+                        if (!isRunning) break
+                        e.printStackTrace()
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -133,56 +97,41 @@ class PhoneServerService : Service() {
     private fun handleClient(socket: Socket) {
         try {
             val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            val writer = PrintWriter(socket.getOutputStream(), true)
+
             val requestLine = reader.readLine() ?: return
-
-            var contentLength = 0
-            var line: String?
-            while (reader.readLine().let { line = it; !line.isNullOrEmpty() }) {
-                if (line!!.startsWith("Content-Length:", true)) {
-                    contentLength = line!!.substring(15).trim().toIntOrNull() ?: 0
-                }
-            }
-
-            var body = ""
-            if (contentLength > 0) {
-                val cbuf = CharArray(contentLength)
-                reader.read(cbuf)
-                body = String(cbuf)
-            }
-
-            val output = socket.getOutputStream()
-            var responseJson = ""
-            var statusCode = "200 OK"
+            var responseBody = "Not Found"
+            var statusCode = "404 Not Found"
 
             when {
-                requestLine.startsWith("GET /contacts") -> {
-                    responseJson = fetchContactsJson()
+                requestLine.contains("GET /ping") -> {
+                    statusCode = "200 OK"
+                    responseBody = "phonetolinux-server-found"
                 }
-                requestLine.startsWith("GET /conversations") -> {
-                    responseJson = fetchConversationsJson()
+                requestLine.contains("GET /contacts") -> {
+                    statusCode = "200 OK"
+                    responseBody = fetchContactsJson()
                 }
-                requestLine.startsWith("GET /chathistory") -> {
+                requestLine.contains("GET /chathistory") -> {
                     val number = extractQueryParam(requestLine, "number")
-                    responseJson = fetchChatHistoryJson(number)
+                    statusCode = "200 OK"
+                    responseBody = fetchChatHistoryJson(number)
                 }
-                requestLine.startsWith("GET /call") -> {
+                requestLine.contains("GET /call") -> {
                     val number = extractQueryParam(requestLine, "number")
                     makeCall(number)
-                    responseJson = "{\"status\":\"success\"}"
-                }
-                requestLine.startsWith("POST /sendsms") -> {
-                    sendSmsFromBody(body)
-                    responseJson = "{\"status\":\"success\"}"
-                }
-                else -> {
-                    statusCode = "404 Not Found"
-                    responseJson = "Not Found"
+                    statusCode = "200 OK"
+                    responseBody = "{\"status\":\"success\"}"
                 }
             }
 
-            val httpResponse = "HTTP/1.1 $statusCode\r\nContent-Type: application/json; charset=utf-8\r\n\r\n$responseJson"
-            output.write(httpResponse.toByteArray(Charsets.UTF_8))
-            output.flush()
+            writer.println("HTTP/1.1 $statusCode")
+            writer.println("Content-Type: application/json; charset=UTF-8")
+            writer.println("Content-Length: ${responseBody.toByteArray().size}")
+            writer.println("Connection: close")
+            writer.println()
+            writer.println(responseBody)
+
             socket.close()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -192,19 +141,22 @@ class PhoneServerService : Service() {
     private fun extractQueryParam(requestLine: String, paramName: String): String {
         try {
             val parts = requestLine.split(" ")
-            if (parts.size > 1) {
-                val urlParts = parts[1].split("?")
-                if (urlParts.size > 1) {
-                    val queryParams = urlParts[1].split("&")
-                    for (param in queryParams) {
-                        val keyValue = param.split("=")
-                        if (keyValue.size == 2 && keyValue[0] == paramName) {
-                            return URLDecoder.decode(keyValue[1], "UTF-8")
-                        }
-                    }
+            if (parts.size < 2) return ""
+            val pathAndQuery = parts[1]
+            val queryParts = pathAndQuery.split("?")
+            if (queryParts.size < 2) return ""
+
+            val query = queryParts[1]
+            val params = query.split("&")
+            for (param in params) {
+                val keyValue = param.split("=")
+                if (keyValue.size == 2 && keyValue[0] == paramName) {
+                    return URLDecoder.decode(keyValue[1], "UTF-8")
                 }
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         return ""
     }
 
@@ -215,30 +167,29 @@ class PhoneServerService : Service() {
             null, null, null,
             android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
         )
-
         cursor?.use {
             val nameIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
             val numberIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-
             while (it.moveToNext()) {
                 val name = if (nameIdx != -1) it.getString(nameIdx) ?: "Nieznany" else "Nieznany"
                 val number = if (numberIdx != -1) it.getString(numberIdx) ?: "" else ""
                 contactsList.add("{\"name\":\"$name\",\"phone\":\"$number\"}")
             }
         }
-
         return "[${contactsList.joinToString(",")}]"
-    }
-
-    private fun fetchConversationsJson(): String {
-        return "[]"
     }
 
     private fun fetchChatHistoryJson(phoneNumber: String): String {
         val messages = mutableListOf<String>()
         try {
             val uri = Uri.parse("content://sms/")
-            val cursor = contentResolver.query(uri, null, "address = ?", arrayOf(phoneNumber), "date ASC")
+            val cursor = contentResolver.query(
+                uri,
+                null,
+                "address LIKE ?",
+                arrayOf("%$phoneNumber"),
+                "date ASC"
+            )
             cursor?.use {
                 val bodyIdx = it.getColumnIndex("body")
                 val typeIdx = it.getColumnIndex("type")
@@ -249,39 +200,40 @@ class PhoneServerService : Service() {
                     messages.add("{\"text\":\"$body\",\"isOutgoing\":$isOutgoing}")
                 }
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         return "[${messages.joinToString(",")}]"
     }
 
     private fun makeCall(number: String) {
         if (number.isBlank()) return
         try {
-            val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number")).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun sendSmsFromBody(body: String) {
-        try {
-            var phone = ""
-            var message = ""
-
-            if (body.contains("phoneNumber") && body.contains("message")) {
-                val phoneMatch = Regex("\"phoneNumber\"\\s*:\\s*\"([^\"]*)\"").find(body)
-                val msgMatch = Regex("\"message\"\\s*:\\s*\"([^\"]*)\"").find(body)
-
-                phone = phoneMatch?.groupValues?.get(1) ?: ""
-                message = msgMatch?.groupValues?.get(1) ?: ""
+            // Wzorzec KDE Connect: Full-Screen Intent wybudzający MainActivity z tła
+            val intent = Intent(this, MainActivity::class.java).apply {
+                action = "ACTION_MAKE_CALL"
+                putExtra("EXTRA_PHONE_NUMBER", number)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
 
-            if (phone.isNotBlank() && message.isNotBlank()) {
-                val smsManager = SmsManager.getDefault()
-                smsManager.sendTextMessage(phone, null, message, null, null)
-            }
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            val callNotification = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("PhonetoLinux - Połączenie")
+                .setContentText("Inicjowanie połączenia z: $number")
+                .setSmallIcon(android.R.drawable.ic_menu_call)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setContentIntent(pendingIntent)
+                .setFullScreenIntent(pendingIntent, true) // Kluczowy element KDE: automatyczny pełny ekran
+                .setAutoCancel(true)
+                .build()
+
+            notificationManager?.notify(99, callNotification)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -292,6 +244,11 @@ class PhoneServerService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
-        serverSocket?.close()
+        try {
+            serverSocket?.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        serviceScope.cancel()
     }
 }

@@ -45,6 +45,46 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+
+        handleCallIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent != null) {
+            handleCallIntent(intent)
+        }
+    }
+
+    private fun handleCallIntent(intent: Intent) {
+        if (intent.action == "ACTION_MAKE_CALL") {
+            val number = intent.getStringExtra("EXTRA_PHONE_NUMBER")
+            if (!number.isNullOrBlank()) {
+                triggerDirectCall(number)
+            }
+        }
+    }
+
+    private fun triggerDirectCall(number: String) {
+        try {
+            // Skoro MainActivity została wybudzona na pierwszy plan przez Full-Screen Intent,
+            // możemy teraz bezpiecznie wykonać bezpośrednie połączenie (ACTION_CALL).
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(callIntent)
+            } else {
+                // Fallback do dialera, jeśli brak uprawnienia CALL_PHONE
+                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(dialIntent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override fun onResume() {
@@ -59,7 +99,8 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.SEND_SMS,
-            Manifest.permission.RECEIVE_SMS
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.CALL_PHONE
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -76,7 +117,8 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.SEND_SMS,
-            Manifest.permission.RECEIVE_SMS
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.CALL_PHONE
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
