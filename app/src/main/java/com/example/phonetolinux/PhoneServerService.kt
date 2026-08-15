@@ -123,6 +123,13 @@ class PhoneServerService : Service() {
                     statusCode = "200 OK"
                     responseBody = "{\"status\":\"success\"}"
                 }
+                requestLine.contains("GET /send_sms") -> {
+                    val number = extractQueryParam(requestLine, "number")
+                    val message = extractQueryParam(requestLine, "message")
+                    val success = SmsHandler.sendSms(this, number, message)
+                    statusCode = "200 OK"
+                    responseBody = if (success) "{\"status\":\"success\"}" else "{\"status\":\"error\"}"
+                }
             }
 
             writer.println("HTTP/1.1 $statusCode")
