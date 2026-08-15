@@ -55,8 +55,10 @@ class PhoneServerService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "PhonetoLinux Serwer w tle",
-                NotificationManager.IMPORTANCE_LOW
-            )
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Kanał wymagany do działania serwera w tle"
+            }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
@@ -67,7 +69,8 @@ class PhoneServerService : Service() {
             .setContentTitle("PhonetoLinux Bridge")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
 
@@ -132,7 +135,6 @@ class PhoneServerService : Service() {
             val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
             val requestLine = reader.readLine() ?: return
 
-            // Odczyt nagłówków, aby wyłapać ewentualny Content-Length przy zapytaniach POST
             var contentLength = 0
             var line: String?
             while (reader.readLine().let { line = it; !line.isNullOrEmpty() }) {
@@ -229,7 +231,6 @@ class PhoneServerService : Service() {
     }
 
     private fun fetchConversationsJson(): String {
-        // Prosta implementacja zwracająca puste lub ostatnie konwersacje z bazy SMS
         return "[]"
     }
 
@@ -244,7 +245,7 @@ class PhoneServerService : Service() {
                 while (it.moveToNext()) {
                     val body = if (bodyIdx != -1) it.getString(bodyIdx) ?: "" else ""
                     val type = if (typeIdx != -1) it.getInt(typeIdx) else 1
-                    val isOutgoing = (type == 2) // 2 to zazwyczaj wysłane (SENT)
+                    val isOutgoing = (type == 2)
                     messages.add("{\"text\":\"$body\",\"isOutgoing\":$isOutgoing}")
                 }
             }
@@ -266,12 +267,10 @@ class PhoneServerService : Service() {
 
     private fun sendSmsFromBody(body: String) {
         try {
-            // Proste wyciągnięcie danych z JSON typu {"phoneNumber":"...","message":"..."}
             var phone = ""
             var message = ""
 
             if (body.contains("phoneNumber") && body.contains("message")) {
-                // Wyciąganie wartości za pomocą prostej manipulacji stringami lub regexem
                 val phoneMatch = Regex("\"phoneNumber\"\\s*:\\s*\"([^\"]*)\"").find(body)
                 val msgMatch = Regex("\"message\"\\s*:\\s*\"([^\"]*)\"").find(body)
 

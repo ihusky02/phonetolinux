@@ -40,7 +40,8 @@ class MainActivity : ComponentActivity() {
             ) {
                 MainScreen(
                     statusMessage = serviceStatusText,
-                    onStartClicked = { checkAndRequestPermissions() }
+                    onStartClicked = { checkAndRequestPermissions() },
+                    onOpenSettingsClicked = { openAppNotificationSettings() }
                 )
             }
         }
@@ -48,7 +49,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Sprawdzamy stan uprawnień po powrocie z okna ustawień systemowych
         if (hasAllPermissions()) {
             serviceStatusText = "Status: Usługa w tle uruchomiona!"
         }
@@ -95,6 +95,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun openAppNotificationSettings() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            }
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            val intentFallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(intentFallback)
+        }
+    }
+
     private fun triggerServiceAndSettings() {
         startPhoneService()
         checkNotificationListenerPermission()
@@ -138,7 +158,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(statusMessage: String, onStartClicked: () -> Unit) {
+fun MainScreen(statusMessage: String, onStartClicked: () -> Unit, onOpenSettingsClicked: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -158,6 +178,10 @@ fun MainScreen(statusMessage: String, onStartClicked: () -> Unit) {
         Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = onStartClicked) {
             Text(text = "Uruchom Usługę i Uprawnienia")
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(onClick = onOpenSettingsClicked) {
+            Text(text = "Otwórz Ustawienia Powiadomień")
         }
     }
 }
