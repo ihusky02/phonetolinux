@@ -46,6 +46,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Sprawdzamy stan uprawnień po powrocie z okna ustawień systemowych
+        if (hasAllPermissions()) {
+            serviceStatusText = "Status: Usługa w tle uruchomiona!"
+        }
+    }
+
+    private fun hasAllPermissions(): Boolean {
+        val permissions = mutableListOf(
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.RECEIVE_SMS
+        )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        return permissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
     private fun checkAndRequestPermissions() {
         val permissions = mutableListOf(
             Manifest.permission.READ_CONTACTS,
