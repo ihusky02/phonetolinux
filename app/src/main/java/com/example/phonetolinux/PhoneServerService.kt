@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.phonetolinux.MainActivity
+import com.example.phonetolinux.SmsHandler
 import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -32,7 +33,6 @@ class PhoneServerService : Service() {
         const val PORT = 5000
         private const val TAG = "PhoneToLinuxServer"
 
-        // Lista aktywnych połączeń klientów (strumień powiadomień)
         private val clients = Collections.synchronizedList(mutableListOf<PrintWriter>())
 
         fun broadcastSms(sender: String, message: String) {
@@ -43,7 +43,6 @@ class PhoneServerService : Service() {
                 val deadClients = mutableListOf<PrintWriter>()
                 for (writer in clients) {
                     try {
-                        // Poprawka SSE: wysyłamy prefiks data: oraz pustą linię rozdzielającą zdarzenia
                         writer.println("data: $jsonPayload")
                         writer.println()
                         writer.flush()
@@ -124,13 +123,11 @@ class PhoneServerService : Service() {
             val requestLine = reader.readLine() ?: return
             Log.d(TAG, "Otrzymano żądanie: $requestLine")
 
-            // Odczytujemy i ignorujemy pozostałe nagłówki HTTP od klienta
             var headerLine = reader.readLine()
             while (!headerLine.isNullOrEmpty()) {
                 headerLine = reader.readLine()
             }
 
-            // Obsługa nasłuchu w czasie rzeczywistym (Streaming / persystentne połączenie dla SMS)
             if (requestLine.startsWith("GET /sms_stream")) {
                 writer.println("HTTP/1.1 200 OK")
                 writer.println("Content-Type: text/event-stream")
@@ -143,12 +140,11 @@ class PhoneServerService : Service() {
                     Log.d(TAG, "Dodano klienta do strumienia /sms_stream! Łącznie klientów: ${clients.size}")
                 }
 
-                // Utrzymujemy socket otwarty + wysyłamy co 15 sekund ping utrzymujący połączenie (heartbeat)
                 var pingCounter = 0
                 while (isRunning && !socket.isClosed) {
                     Thread.sleep(5000)
                     pingCounter++
-                    if (pingCounter >= 3) { // Co ok. 15 sekund
+                    if (pingCounter >= 3) {
                         try {
                             writer.println(": ping")
                             writer.flush()
@@ -174,7 +170,8 @@ class PhoneServerService : Service() {
                     responseBody = fetchContactsJson()
                 }
                 requestLine.contains("GET /chathistory") -> {
-                    val number = extractQueryParam(requestLine, "number")
+                    val rawNumber = extractQueryParam(requestLine, "number")
+                    val number = SmsHandler.parseQueryNumber(rawNumber) // Zabezpieczone przez handler
                     statusCode = "200 OK"
                     responseBody = fetchChatHistoryJson(number)
                 }
