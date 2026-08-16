@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -170,10 +169,10 @@ class PhoneServerService : Service() {
                     responseBody = fetchContactsJson()
                 }
                 requestLine.contains("GET /chathistory") -> {
-                    val rawNumber = extractQueryParam(requestLine, "number")
-                    val number = SmsHandler.parseQueryNumber(rawNumber) // Zabezpieczone przez handler
+                    val number = extractQueryParam(requestLine, "number")
                     statusCode = "200 OK"
-                    responseBody = fetchChatHistoryJson(number)
+                    // Pobieramy historię za pomocą SmsHandler
+                    responseBody = SmsHandler.fetchChatHistoryJson(contentResolver, number)
                 }
                 requestLine.contains("GET /call") -> {
                     val number = extractQueryParam(requestLine, "number")
@@ -242,33 +241,6 @@ class PhoneServerService : Service() {
             }
         }
         return "[${contactsList.joinToString(",")}]"
-    }
-
-    private fun fetchChatHistoryJson(phoneNumber: String): String {
-        val messages = mutableListOf<String>()
-        try {
-            val uri = Uri.parse("content://sms/")
-            val cursor = contentResolver.query(
-                uri,
-                null,
-                "address LIKE ?",
-                arrayOf("%$phoneNumber"),
-                "date ASC"
-            )
-            cursor?.use {
-                val bodyIdx = it.getColumnIndex("body")
-                val typeIdx = it.getColumnIndex("type")
-                while (it.moveToNext()) {
-                    val body = if (bodyIdx != -1) it.getString(bodyIdx) ?: "" else ""
-                    val type = if (typeIdx != -1) it.getInt(typeIdx) else 1
-                    val isOutgoing = (type == 2)
-                    messages.add("{\"text\":\"$body\",\"isOutgoing\":$isOutgoing}")
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return "[${messages.joinToString(",")}]"
     }
 
     private fun makeCall(number: String) {
