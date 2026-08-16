@@ -68,15 +68,12 @@ class MainActivity : ComponentActivity() {
 
     private fun triggerDirectCall(number: String) {
         try {
-            // Skoro MainActivity została wybudzona na pierwszy plan przez Full-Screen Intent,
-            // możemy teraz bezpiecznie wykonać bezpośrednie połączenie (ACTION_CALL).
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
                 val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number")).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 startActivity(callIntent)
             } else {
-                // Fallback do dialera, jeśli brak uprawnienia CALL_PHONE
                 val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
@@ -98,8 +95,10 @@ class MainActivity : ComponentActivity() {
         val permissions = mutableListOf(
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_SMS,
             Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_CALL_LOG,
             Manifest.permission.CALL_PHONE
         )
 
@@ -116,8 +115,10 @@ class MainActivity : ComponentActivity() {
         val permissions = mutableListOf(
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_SMS,
             Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_CALL_LOG,
             Manifest.permission.CALL_PHONE
         )
 

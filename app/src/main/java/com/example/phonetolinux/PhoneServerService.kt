@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.phonetolinux.MainActivity
 import kotlinx.coroutines.*
@@ -29,12 +30,15 @@ class PhoneServerService : Service() {
     companion object {
         const val CHANNEL_ID = "PhoneToLinuxChannel"
         const val PORT = 5000
+        private const val TAG = "PhoneToLinuxServer"
 
-        // Lista aktywnych połączeń klientów (np. podgląd WebSocket / strumień powiadomień)
+        // Lista aktywnych połączeń klientów (strumień powiadomień)
         private val clients = Collections.synchronizedList(mutableListOf<PrintWriter>())
 
         fun broadcastSms(sender: String, message: String) {
+            Log.d(TAG, "broadcastSms wywołane dla nadawcy: $sender, treść: $message")
             synchronized(clients) {
+                Log.d(TAG, "Aktualna liczba nasłuchujących klientów: ${clients.size}")
                 val jsonPayload = "{\"event\":\"incoming_sms\",\"sender\":\"$sender\",\"message\":\"$message\"}"
                 val deadClients = mutableListOf<PrintWriter>()
                 for (writer in clients) {
@@ -116,11 +120,13 @@ class PhoneServerService : Service() {
             val writer = PrintWriter(socket.getOutputStream(), true)
 
             val requestLine = reader.readLine() ?: return
+            Log.d(TAG, "Otrzymano żądanie: $requestLine")
 
             // Obsługa nasłuchu w czasie rzeczywistym (Streaming / persystentne połączenie dla SMS)
-            if (requestLine.contains("GET /sms_stream")) {
+            if (requestLine.startsWith("GET /sms_stream")) {
                 synchronized(clients) {
                     clients.add(writer)
+                    Log.d(TAG, "Dodano klienta do strumienia /sms_stream! Łącznie klientów: ${clients.size}")
                 }
                 // Utrzymujemy socket otwarty dla powiadomień w czasie rzeczywistym
                 while (isRunning && !socket.isClosed) {
