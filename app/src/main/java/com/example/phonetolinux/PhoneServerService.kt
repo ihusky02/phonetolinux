@@ -18,6 +18,7 @@ import java.io.PrintWriter
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.util.Collections
 
 class PhoneServerService : Service() {
 
@@ -29,8 +30,23 @@ class PhoneServerService : Service() {
         const val CHANNEL_ID = "PhoneToLinuxChannel"
         const val PORT = 5000
 
+        // Lista aktywnych połączeń klientów (np. podgląd WebSocket / strumień powiadomień)
+        private val clients = Collections.synchronizedList(mutableListOf<PrintWriter>())
+
         fun broadcastSms(sender: String, message: String) {
-            // Metoda wywoływana przez NotificationBridgeService przy odebraniu SMS-a
+            synchronized(clients) {
+                val jsonPayload = "{\"event\":\"incoming_sms\",\"sender\":\"$sender\",\"message\":\"$message\"}"
+                val deadClients = mutableListOf<PrintWriter>()
+                for (writer in clients) {
+                    try {
+                        writer.println(jsonPayload)
+                        writer.flush()
+                    } catch (e: Exception) {
+                        deadClients.add(writer)
+                    }
+                }
+                clients.removeAll(deadClients)
+            }
         }
     }
 
@@ -100,6 +116,19 @@ class PhoneServerService : Service() {
             val writer = PrintWriter(socket.getOutputStream(), true)
 
             val requestLine = reader.readLine() ?: return
+
+            // Obsługa nasłuchu w czasie rzeczywistym (Streaming / persystentne połączenie dla SMS)
+            if (requestLine.contains("GET /sms_stream")) {
+                synchronized(clients) {
+                    clients.add(writer)
+                }
+                // Utrzymujemy socket otwarty dla powiadomień w czasie rzeczywistym
+                while (isRunning && !socket.isClosed) {
+                    Thread.sleep(1000)
+                }
+                return
+            }
+
             var responseBody = "Not Found"
             var statusCode = "404 Not Found"
 
@@ -216,7 +245,6 @@ class PhoneServerService : Service() {
     private fun makeCall(number: String) {
         if (number.isBlank()) return
         try {
-            // Wzorzec KDE Connect: Full-Screen Intent wybudzający MainActivity z tła
             val intent = Intent(this, MainActivity::class.java).apply {
                 action = "ACTION_MAKE_CALL"
                 putExtra("EXTRA_PHONE_NUMBER", number)
@@ -236,7 +264,7 @@ class PhoneServerService : Service() {
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setContentIntent(pendingIntent)
-                .setFullScreenIntent(pendingIntent, true) // Kluczowy element KDE: automatyczny pełny ekran
+                .setFullScreenIntent(pendingIntent, true)
                 .setAutoCancel(true)
                 .build()
 
