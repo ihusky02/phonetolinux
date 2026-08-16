@@ -43,7 +43,9 @@ class PhoneServerService : Service() {
                 val deadClients = mutableListOf<PrintWriter>()
                 for (writer in clients) {
                     try {
-                        writer.println(jsonPayload)
+                        // Poprawka SSE: wysyłamy prefiks data: oraz pustą linię rozdzielającą zdarzenia
+                        writer.println("data: $jsonPayload")
+                        writer.println()
                         writer.flush()
                     } catch (e: Exception) {
                         deadClients.add(writer)
@@ -122,15 +124,39 @@ class PhoneServerService : Service() {
             val requestLine = reader.readLine() ?: return
             Log.d(TAG, "Otrzymano żądanie: $requestLine")
 
+            // Odczytujemy i ignorujemy pozostałe nagłówki HTTP od klienta
+            var headerLine = reader.readLine()
+            while (!headerLine.isNullOrEmpty()) {
+                headerLine = reader.readLine()
+            }
+
             // Obsługa nasłuchu w czasie rzeczywistym (Streaming / persystentne połączenie dla SMS)
             if (requestLine.startsWith("GET /sms_stream")) {
+                writer.println("HTTP/1.1 200 OK")
+                writer.println("Content-Type: text/event-stream")
+                writer.println("Connection: keep-alive")
+                writer.println()
+                writer.flush()
+
                 synchronized(clients) {
                     clients.add(writer)
                     Log.d(TAG, "Dodano klienta do strumienia /sms_stream! Łącznie klientów: ${clients.size}")
                 }
-                // Utrzymujemy socket otwarty dla powiadomień w czasie rzeczywistym
+
+                // Utrzymujemy socket otwarty + wysyłamy co 15 sekund ping utrzymujący połączenie (heartbeat)
+                var pingCounter = 0
                 while (isRunning && !socket.isClosed) {
-                    Thread.sleep(1000)
+                    Thread.sleep(5000)
+                    pingCounter++
+                    if (pingCounter >= 3) { // Co ok. 15 sekund
+                        try {
+                            writer.println(": ping")
+                            writer.flush()
+                        } catch (e: Exception) {
+                            break
+                        }
+                        pingCounter = 0
+                    }
                 }
                 return
             }
