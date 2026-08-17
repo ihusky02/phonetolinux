@@ -38,7 +38,8 @@ class PhoneServerService : Service() {
         ConversationsEndpoint(),
         ChatHistoryEndpoint(),
         CallEndpoint(),
-        SendSmsEndpoint()
+        SendSmsEndpoint(),
+        BluetoothAudioEndpoint() // <-- Nowa wtyczka obsługująca zestaw głośnomówiący Bluetooth (PC)
     )
 
     companion object {
@@ -157,7 +158,7 @@ class PhoneServerService : Service() {
                 return
             }
 
-            // --- NOWY SYSTEM WTYCZEK ---
+            // --- SYSTEM WTYCZEK ---
             // Szukamy wtyczki, która pasuje do otrzymanego adresu URL
             val handler = endpoints.find { requestLine.contains("GET ${it.path}") }
 
