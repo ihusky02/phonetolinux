@@ -7,6 +7,14 @@ import android.os.Build
 import android.telephony.SmsManager
 import android.util.Log
 
+/**
+ * Główny moduł obsługi wiadomości SMS.
+ * Zawiera logikę biznesową odpowiedzialną za wysyłanie wiadomości
+ * (SmsManager) oraz odpytywanie systemowej bazy danych (ContentResolver)
+ * w celu pobierania historii czatów.
+ * Wykorzystywany przez endpointy serwera HTTP.
+ */
+
 object SmsHandler {
     private const val TAG = "SmsHandler"
 

@@ -5,6 +5,13 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 
+/**
+ * Usługa nasłuchująca powiadomień systemowych Androida.
+ * Wychwytuje przychodzące wiadomości SMS bezpośrednio z paska powiadomień
+ * i przekazuje je do serwera HTTP, aby natychmiast wysłać je
+ * do podłączonego klienta (Linux) przez strumień SSE.
+ */
+
 class NotificationBridgeService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {

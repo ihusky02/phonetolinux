@@ -3,29 +3,43 @@ package com.example.phonetolinux.service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.example.phonetolinux.MainActivity
-import com.example.phonetolinux.SmsHandler
+import com.example.phonetolinux.*
 import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.URLDecoder
 import java.util.Collections
 
+/**
+ * Główna usługa serwera HTTP działająca w tle na systemie Android.
+ * Zarządza gniazdem sieciowym (Socket), strumieniem SSE (/sms_stream)
+ * i deleguje standardowe żądania HTTP do odpowiednich wtyczek (EndpointHandler).
+ *
+ * @author Stanisław Tlołka
+ */
 class PhoneServerService : Service() {
 
     private var serverSocket: ServerSocket? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isRunning = false
+
+    // Rejestr wszystkich dostępnych wtyczek (endpointów) serwera
+    private val endpoints = listOf(
+        PingEndpoint(),
+        ContactsEndpoint(),
+        ConversationsEndpoint(),
+        ChatHistoryEndpoint(),
+        CallEndpoint(),
+        SendSmsEndpoint()
+    )
 
     companion object {
         const val CHANNEL_ID = "PhoneToLinuxChannel"
@@ -34,16 +48,17 @@ class PhoneServerService : Service() {
 
         private val clients = Collections.synchronizedList(mutableListOf<PrintWriter>())
 
+        /**
+         * Wysyła powiadomienie o nowym SMS przez otwarty strumień SSE do komputera.
+         */
         fun broadcastSms(sender: String, message: String) {
-            Log.d(TAG, "broadcastSms wywołane dla nadawcy: $sender, treść: $message")
+            Log.d(TAG, "broadcastSms wywołane dla nadawcy: $sender")
             synchronized(clients) {
-                Log.d(TAG, "Aktualna liczba nasłuchujących klientów: ${clients.size}")
                 val jsonPayload = "{\"event\":\"incoming_sms\",\"sender\":\"$sender\",\"message\":\"$message\"}"
                 val deadClients = mutableListOf<PrintWriter>()
                 for (writer in clients) {
                     try {
-                        writer.println("data: $jsonPayload")
-                        writer.println()
+                        writer.println("data: $jsonPayload\n")
                         writer.flush()
                     } catch (e: Exception) {
                         deadClients.add(writer)
@@ -70,13 +85,8 @@ class PhoneServerService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "PhonetoLinux Serwer w tle",
-                NotificationManager.IMPORTANCE_HIGH
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            val channel = NotificationChannel(CHANNEL_ID, "PhonetoLinux Serwer w tle", NotificationManager.IMPORTANCE_HIGH)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
@@ -100,9 +110,7 @@ class PhoneServerService : Service() {
                 while (isRunning) {
                     try {
                         val clientSocket = serverSocket?.accept() ?: break
-                        launch(Dispatchers.IO) {
-                            handleClient(clientSocket)
-                        }
+                        launch(Dispatchers.IO) { handleClient(clientSocket) }
                     } catch (e: Exception) {
                         if (!isRunning) break
                         e.printStackTrace()
@@ -123,21 +131,16 @@ class PhoneServerService : Service() {
             Log.d(TAG, "Otrzymano żądanie: $requestLine")
 
             var headerLine = reader.readLine()
-            while (!headerLine.isNullOrEmpty()) {
-                headerLine = reader.readLine()
-            }
+            while (!headerLine.isNullOrEmpty()) { headerLine = reader.readLine() }
 
+            // Strumień SSE jest obsługiwany natywnie ze względu na pętlę podtrzymującą (keep-alive)
             if (requestLine.startsWith("GET /sms_stream")) {
                 writer.println("HTTP/1.1 200 OK")
                 writer.println("Content-Type: text/event-stream")
-                writer.println("Connection: keep-alive")
-                writer.println()
+                writer.println("Connection: keep-alive\n")
                 writer.flush()
 
-                synchronized(clients) {
-                    clients.add(writer)
-                    Log.d(TAG, "Dodano klienta do strumienia /sms_stream! Łącznie klientów: ${clients.size}")
-                }
+                synchronized(clients) { clients.add(writer) }
 
                 var pingCounter = 0
                 while (isRunning && !socket.isClosed) {
@@ -145,131 +148,38 @@ class PhoneServerService : Service() {
                     pingCounter++
                     if (pingCounter >= 3) {
                         try {
-                            writer.println(": ping")
+                            writer.println(": ping\n")
                             writer.flush()
-                        } catch (e: Exception) {
-                            break
-                        }
+                        } catch (e: Exception) { break }
                         pingCounter = 0
                     }
                 }
                 return
             }
 
-            var responseBody = "Not Found"
-            var statusCode = "404 Not Found"
+            // --- NOWY SYSTEM WTYCZEK ---
+            // Szukamy wtyczki, która pasuje do otrzymanego adresu URL
+            val handler = endpoints.find { requestLine.contains("GET ${it.path}") }
 
-            when {
-                requestLine.contains("GET /ping") -> {
-                    statusCode = "200 OK"
-                    responseBody = "phonetolinux-server-found"
-                }
-                requestLine.contains("GET /contacts") -> {
-                    statusCode = "200 OK"
-                    responseBody = fetchContactsJson()
-                }
-                requestLine.contains("GET /chathistory") -> {
-                    val number = extractQueryParam(requestLine, "number")
-                    statusCode = "200 OK"
-                    // Pobieramy historię za pomocą SmsHandler
-                    responseBody = SmsHandler.fetchChatHistoryJson(contentResolver, number)
-                }
-                requestLine.contains("GET /call") -> {
-                    val number = extractQueryParam(requestLine, "number")
-                    makeCall(number)
-                    statusCode = "200 OK"
-                    responseBody = "{\"status\":\"success\"}"
-                }
-                requestLine.contains("GET /send_sms") -> {
-                    val number = extractQueryParam(requestLine, "number")
-                    val message = extractQueryParam(requestLine, "message")
-                    val success = SmsHandler.sendSms(this, number, message)
-                    statusCode = "200 OK"
-                    responseBody = if (success) "{\"status\":\"success\"}" else "{\"status\":\"error\"}"
-                }
+            val statusCode: String
+            val responseBody: String
+
+            if (handler != null) {
+                val response = handler.handle(requestLine, this)
+                statusCode = response.statusCode
+                responseBody = response.body
+            } else {
+                statusCode = "404 Not Found"
+                responseBody = "Not Found"
             }
 
             writer.println("HTTP/1.1 $statusCode")
             writer.println("Content-Type: application/json; charset=UTF-8")
             writer.println("Content-Length: ${responseBody.toByteArray().size}")
-            writer.println("Connection: close")
-            writer.println()
+            writer.println("Connection: close\n")
             writer.println(responseBody)
 
             socket.close()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun extractQueryParam(requestLine: String, paramName: String): String {
-        try {
-            val parts = requestLine.split(" ")
-            if (parts.size < 2) return ""
-            val pathAndQuery = parts[1]
-            val queryParts = pathAndQuery.split("?")
-            if (queryParts.size < 2) return ""
-
-            val query = queryParts[1]
-            val params = query.split("&")
-            for (param in params) {
-                val keyValue = param.split("=")
-                if (keyValue.size == 2 && keyValue[0] == paramName) {
-                    return URLDecoder.decode(keyValue[1], "UTF-8")
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return ""
-    }
-
-    private fun fetchContactsJson(): String {
-        val contactsList = mutableListOf<String>()
-        val cursor = contentResolver.query(
-            android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-            null, null, null,
-            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
-        )
-        cursor?.use {
-            val nameIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-            val numberIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-            while (it.moveToNext()) {
-                val name = if (nameIdx != -1) it.getString(nameIdx) ?: "Nieznany" else "Nieznany"
-                val number = if (numberIdx != -1) it.getString(numberIdx) ?: "" else ""
-                contactsList.add("{\"name\":\"$name\",\"phone\":\"$number\"}")
-            }
-        }
-        return "[${contactsList.joinToString(",")}]"
-    }
-
-    private fun makeCall(number: String) {
-        if (number.isBlank()) return
-        try {
-            val intent = Intent(this, MainActivity::class.java).apply {
-                action = "ACTION_MAKE_CALL"
-                putExtra("EXTRA_PHONE_NUMBER", number)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-
-            val pendingIntent = PendingIntent.getActivity(
-                this, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            val callNotification = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("PhonetoLinux - Połączenie")
-                .setContentText("Inicjowanie połączenia z: $number")
-                .setSmallIcon(android.R.drawable.ic_menu_call)
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_CALL)
-                .setContentIntent(pendingIntent)
-                .setFullScreenIntent(pendingIntent, true)
-                .setAutoCancel(true)
-                .build()
-
-            notificationManager?.notify(99, callNotification)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -280,11 +190,7 @@ class PhoneServerService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
-        try {
-            serverSocket?.close()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        try { serverSocket?.close() } catch (e: Exception) { e.printStackTrace() }
         serviceScope.cancel()
     }
 }
