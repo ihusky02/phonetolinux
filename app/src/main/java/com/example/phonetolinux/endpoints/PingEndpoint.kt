@@ -3,6 +3,7 @@ package com.example.phonetolinux
 import com.example.phonetolinux.EndpointHandler
 import com.example.phonetolinux.EndpointResponse
 import android.content.Context
+import com.example.phonetolinux.HttpUtils
 
 /**
  * Test ping endpoint plugin.

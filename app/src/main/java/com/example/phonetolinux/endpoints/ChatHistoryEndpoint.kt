@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.phonetolinux.EndpointHandler
 import com.example.phonetolinux.EndpointResponse
 import com.example.phonetolinux.SmsHandler
+import com.example.phonetolinux.HttpUtils
 
 /**
  * Endpoint plugin that retrieves the chat history for a specific contact.

@@ -4,6 +4,7 @@ import com.example.phonetolinux.EndpointHandler
 import com.example.phonetolinux.EndpointResponse
 import android.content.Context
 import com.example.phonetolinux.SmsHandler
+import com.example.phonetolinux.HttpUtils
 
 /**
  * Endpoint plugin responsible for sending SMS messages via the built-in SmsManager.
