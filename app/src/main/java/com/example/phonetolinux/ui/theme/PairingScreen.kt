@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.phonetolinux.HttpUtils
 import com.example.phonetolinux.data.PairingRequest
 import com.example.phonetolinux.network.PairingApiService
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +28,7 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
     var ipAddress by remember { mutableStateOf("") }
     var pinCode by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf("Enter desktop IP and the 6-digit PIN") }
+    var statusMessage by remember { mutableStateOf(HttpUtils.getLocalizedText("enter_ip_pin_hint")) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -40,7 +41,7 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Pair with Linux Desktop",
+            text = HttpUtils.getLocalizedText("pairing_title"),
             fontSize = 24.sp,
             style = MaterialTheme.typography.titleLarge
         )
@@ -50,7 +51,7 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
         OutlinedTextField(
             value = ipAddress,
             onValueChange = { ipAddress = it },
-            label = { Text("Desktop IP Address (e.g., 192.168.100.92)") },
+            label = { Text(HttpUtils.getLocalizedText("ip_label")) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
@@ -61,7 +62,7 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
         OutlinedTextField(
             value = pinCode,
             onValueChange = { if (it.length <= 6) pinCode = it.filter { char -> char.isDigit() } },
-            label = { Text("6-Digit PIN (e.g., 922653)") },
+            label = { Text(HttpUtils.getLocalizedText("pin_label")) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -72,12 +73,12 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
         Button(
             onClick = {
                 if (ipAddress.isBlank() || pinCode.length != 6) {
-                    Toast.makeText(context, "Please enter a valid IP and 6-digit PIN", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, HttpUtils.getLocalizedText("toast_invalid_input"), Toast.LENGTH_SHORT).show()
                     return@Button
                 }
 
                 isLoading = true
-                statusMessage = "Connecting to desktop..."
+                statusMessage = HttpUtils.getLocalizedText("connecting")
 
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
@@ -98,18 +99,18 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
 
                         if (response.isSuccessful && response.body()?.status == "SUCCESS") {
                             launch(Dispatchers.Main) {
-                                Toast.makeText(context, "Pairing Successful!", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, HttpUtils.getLocalizedText("toast_success"), Toast.LENGTH_LONG).show()
                                 onPairingSuccess()
                             }
                         } else {
                             launch(Dispatchers.Main) {
-                                statusMessage = "Pairing failed: Invalid PIN or server error."
+                                statusMessage = HttpUtils.getLocalizedText("pairing_failed")
                                 isLoading = false
                             }
                         }
                     } catch (e: Exception) {
                         launch(Dispatchers.Main) {
-                            statusMessage = "Connection error: ${e.localizedMessage}"
+                            statusMessage = "${HttpUtils.getLocalizedText("connection_error")} ${e.localizedMessage}"
                             isLoading = false
                         }
                     }
@@ -124,7 +125,7 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
                     color = MaterialTheme.colorScheme.onPrimary
                 )
             } else {
-                Text("Pair Device")
+                Text(HttpUtils.getLocalizedText("pair_button"))
             }
         }
 
