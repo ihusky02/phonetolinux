@@ -9,8 +9,13 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.example.phonetolinux.*
-import com.example.phonetolinux.endpoints.*
+import com.example.phonetolinux.CallEndpoint
+import com.example.phonetolinux.ContactsEndpoint
+import com.example.phonetolinux.PingEndpoint
+import com.example.phonetolinux.endpoints.BluetoothAudioEndpoint
+import com.example.phonetolinux.endpoints.ChatHistoryEndpoint
+import com.example.phonetolinux.endpoints.ConversationsEndpoint
+import com.example.phonetolinux.endpoints.SendSmsEndpoint
 import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader

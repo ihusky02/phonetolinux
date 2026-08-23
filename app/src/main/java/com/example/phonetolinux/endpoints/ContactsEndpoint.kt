@@ -1,6 +1,8 @@
 package com.example.phonetolinux
 
 import android.content.Context
+import com.example.phonetolinux.EndpointHandler
+import com.example.phonetolinux.EndpointResponse
 
 /**
  * Endpoint plugin responsible for fetching the device contacts list.
