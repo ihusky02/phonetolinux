@@ -23,8 +23,8 @@ import com.example.phonetolinux.ui.theme.PairingScreen
 
 class MainActivity : ComponentActivity() {
 
-    // Status message state displayed on the UI
-    var serviceStatusText by mutableStateOf("Status: Waiting to start...")
+    // Status message state localized based on system language
+    var serviceStatusText by mutableStateOf(HttpUtils.getLocalizedText("waiting_status"))
 
     // State controlling whether the device is paired with the Linux desktop
     var isPaired by mutableStateOf(false)
@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (hasAllPermissions()) {
-            serviceStatusText = "Status: Background service running!"
+            serviceStatusText = HttpUtils.getLocalizedText("running_status")
         }
     }
 
@@ -125,7 +125,6 @@ class MainActivity : ComponentActivity() {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // Added Bluetooth Connect permission for Android 12+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
@@ -151,7 +150,6 @@ class MainActivity : ComponentActivity() {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // Added Bluetooth Connect permission for Android 12+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
@@ -161,7 +159,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (missingPermissions.isNotEmpty()) {
-            serviceStatusText = "Status: Requesting permissions..."
+            serviceStatusText = HttpUtils.getLocalizedText("requesting_status")
             requestPermissionLauncher.launch(missingPermissions.toTypedArray())
         } else {
             triggerServiceAndSettings()
@@ -194,7 +192,7 @@ class MainActivity : ComponentActivity() {
         startPhoneService()
         checkNotificationListenerPermission()
         requestBatteryOptimizationExemption()
-        serviceStatusText = "Status: Background service running!"
+        serviceStatusText = HttpUtils.getLocalizedText("running_status")
     }
 
     // Starts the foreground service handling communication with Linux
@@ -258,11 +256,11 @@ fun MainScreen(statusMessage: String, onStartClicked: () -> Unit, onOpenSettings
         )
         Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = onStartClicked) {
-            Text(text = "Start Service & Permissions")
+            Text(text = HttpUtils.getLocalizedText("start_service_btn"))
         }
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(onClick = onOpenSettingsClicked) {
-            Text(text = "Open Notification Settings")
+            Text(text = HttpUtils.getLocalizedText("open_settings_btn"))
         }
     }
 }
