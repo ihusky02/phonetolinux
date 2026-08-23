@@ -18,7 +18,7 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
-    <!-- Uprawnienia Bluetooth oraz audio dla zestawu głośnomówiącego (PC) -->
+    <!-- Bluetooth and audio permissions for PC hands-free headset integration -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
@@ -32,7 +32,8 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Phonetolinux">
+        android:theme="@style/Theme.Phonetolinux"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
