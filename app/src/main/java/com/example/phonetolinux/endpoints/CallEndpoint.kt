@@ -8,8 +8,8 @@ import androidx.core.app.NotificationCompat
 import com.example.phonetolinux.service.PhoneServerService
 
 /**
- * Wtyczka wywołująca połączenie głosowe.
- * Tworzy powiadomienie o wysokim priorytecie i wysyła intencję do MainActivity.
+ * Endpoint plugin responsible for triggering voice calls.
+ * Creates a high-priority notification and dispatches an intent to MainActivity.
  */
 class CallEndpoint : EndpointHandler {
     override val path = "/call"
@@ -37,8 +37,8 @@ class CallEndpoint : EndpointHandler {
 
             val notificationManager = context.getSystemService(NotificationManager::class.java)
             val callNotification = NotificationCompat.Builder(context, PhoneServerService.CHANNEL_ID)
-                .setContentTitle("PhonetoLinux - Połączenie")
-                .setContentText("Inicjowanie połączenia z: $number")
+                .setContentTitle("PhonetoLinux - Call")
+                .setContentText("Initiating call to: $number")
                 .setSmallIcon(android.R.drawable.ic_menu_call)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_CALL)

@@ -3,9 +3,9 @@ package com.example.phonetolinux
 import android.content.Context
 
 /**
- * Wtyczka testowa.
- * Odpowiada na żądanie /ping, pozwalając aplikacji desktopowej
- * sprawdzić, czy telefon jest dostępny w sieci.
+ * Test ping endpoint plugin.
+ * Responds to the /ping request, allowing the desktop application
+ * to verify whether the phone is reachable on the network.
  */
 class PingEndpoint : EndpointHandler {
     override val path = "/ping"

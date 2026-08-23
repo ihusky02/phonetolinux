@@ -3,8 +3,8 @@ package com.example.phonetolinux
 import android.content.Context
 
 /**
- * Wtyczka odpowiedzialna za pobieranie listy kontaktów z telefonu.
- * Zwraca dane w formacie JSON dla aplikacji linuksowej.
+ * Endpoint plugin responsible for fetching the device contacts list.
+ * Returns the data in JSON format for the Linux desktop application.
  */
 class ContactsEndpoint : EndpointHandler {
     override val path = "/contacts"
@@ -20,7 +20,7 @@ class ContactsEndpoint : EndpointHandler {
             val nameIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
             val numberIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
             while (it.moveToNext()) {
-                val name = if (nameIdx != -1) it.getString(nameIdx) ?: "Nieznany" else "Nieznany"
+                val name = if (nameIdx != -1) it.getString(nameIdx) ?: "Unknown" else "Unknown"
                 val number = if (numberIdx != -1) it.getString(numberIdx) ?: "" else ""
                 contactsList.add("{\"name\":\"$name\",\"phone\":\"$number\"}")
             }

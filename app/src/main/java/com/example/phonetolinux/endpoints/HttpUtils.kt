@@ -3,8 +3,8 @@ package com.example.phonetolinux
 import java.net.URLDecoder
 
 /**
- * Narzędzia pomocnicze do przetwarzania żądań HTTP.
- * Wyciąga parametry z adresów URL (np. ?number=123&message=test).
+ * Helper utilities for processing HTTP requests.
+ * Extracts parameters from URL query strings (e.g., ?number=123&message=test).
  */
 object HttpUtils {
     fun extractQueryParam(requestLine: String, paramName: String): String {

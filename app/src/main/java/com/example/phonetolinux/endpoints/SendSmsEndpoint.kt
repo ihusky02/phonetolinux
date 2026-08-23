@@ -4,7 +4,7 @@ import android.content.Context
 import com.example.phonetolinux.SmsHandler
 
 /**
- * Wtyczka wysyłająca SMS przez wbudowany SmsManager.
+ * Endpoint plugin responsible for sending SMS messages via the built-in SmsManager.
  */
 class SendSmsEndpoint : EndpointHandler {
     override val path = "/send_sms"

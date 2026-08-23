@@ -4,7 +4,7 @@ import android.content.Context
 import com.example.phonetolinux.SmsHandler
 
 /**
- * Wtyczka pobierająca historię konkretnego czatu.
+ * Endpoint plugin that retrieves the chat history for a specific contact.
  */
 class ChatHistoryEndpoint : EndpointHandler {
     override val path = "/chathistory"
