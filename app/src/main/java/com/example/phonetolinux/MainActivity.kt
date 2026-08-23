@@ -19,11 +19,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.phonetolinux.service.PhoneServerService
+import com.example.phonetolinux.ui.theme.PairingScreen
 
 class MainActivity : ComponentActivity() {
 
-    var serviceStatusText by mutableStateOf("Status: Oczekiwanie na uruchomienie...")
+    // Status message state displayed on the UI
+    var serviceStatusText by mutableStateOf("Status: Waiting to start...")
 
+    // State controlling whether the device is paired with the Linux desktop
+    var isPaired by mutableStateOf(false)
+
+    // Launcher for handling multiple runtime permissions requests
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
@@ -38,11 +44,21 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.background
             ) {
-                MainScreen(
-                    statusMessage = serviceStatusText,
-                    onStartClicked = { checkAndRequestPermissions() },
-                    onOpenSettingsClicked = { openAppNotificationSettings() }
-                )
+                if (!isPaired) {
+                    // Display PIN pairing screen first if device is not yet paired
+                    PairingScreen(
+                        onPairingSuccess = {
+                            isPaired = true
+                        }
+                    )
+                } else {
+                    // Main dashboard view after successful authentication
+                    MainScreen(
+                        statusMessage = serviceStatusText,
+                        onStartClicked = { checkAndRequestPermissions() },
+                        onOpenSettingsClicked = { openAppNotificationSettings() }
+                    )
+                }
             }
         }
 
@@ -57,6 +73,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Handles incoming call intents from the desktop bridge
     private fun handleCallIntent(intent: Intent) {
         if (intent.action == "ACTION_MAKE_CALL") {
             val number = intent.getStringExtra("EXTRA_PHONE_NUMBER")
@@ -66,6 +83,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Triggers a phone call action based on available permissions
     private fun triggerDirectCall(number: String) {
         try {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
@@ -87,10 +105,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (hasAllPermissions()) {
-            serviceStatusText = "Status: Usługa w tle uruchomiona!"
+            serviceStatusText = "Status: Background service running!"
         }
     }
 
+    // Checks if all required runtime permissions are granted
     private fun hasAllPermissions(): Boolean {
         val permissions = mutableListOf(
             Manifest.permission.READ_CONTACTS,
@@ -106,7 +125,7 @@ class MainActivity : ComponentActivity() {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // Dodano uprawnienie Bluetooth Connect dla Androida 12+
+        // Added Bluetooth Connect permission for Android 12+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
@@ -116,6 +135,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Verifies missing permissions and prompts the user if necessary
     private fun checkAndRequestPermissions() {
         val permissions = mutableListOf(
             Manifest.permission.READ_CONTACTS,
@@ -131,7 +151,7 @@ class MainActivity : ComponentActivity() {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // Dodano uprawnienie Bluetooth Connect dla Androida 12+
+        // Added Bluetooth Connect permission for Android 12+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
@@ -141,13 +161,14 @@ class MainActivity : ComponentActivity() {
         }
 
         if (missingPermissions.isNotEmpty()) {
-            serviceStatusText = "Status: Prośba o uprawnienia..."
+            serviceStatusText = "Status: Requesting permissions..."
             requestPermissionLauncher.launch(missingPermissions.toTypedArray())
         } else {
             triggerServiceAndSettings()
         }
     }
 
+    // Opens system notification settings for the application
     private fun openAppNotificationSettings() {
         val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
@@ -168,13 +189,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Starts background services and triggers system optimization prompts
     private fun triggerServiceAndSettings() {
         startPhoneService()
         checkNotificationListenerPermission()
         requestBatteryOptimizationExemption()
-        serviceStatusText = "Status: Usługa w tle uruchomiona!"
+        serviceStatusText = "Status: Background service running!"
     }
 
+    // Starts the foreground service handling communication with Linux
     private fun startPhoneService() {
         val serviceIntent = Intent(this, PhoneServerService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -184,6 +207,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Checks notification listener access permission
     private fun checkNotificationListenerPermission() {
         val enabledListeners = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
         if (enabledListeners == null || !enabledListeners.contains(packageName)) {
@@ -192,6 +216,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Requests exemption from battery optimizations to keep service alive
     private fun requestBatteryOptimizationExemption() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val powerManager = getSystemService(POWER_SERVICE) as PowerManager
@@ -210,6 +235,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Main dashboard Composable screen displayed after successful pairing and permissions setup.
+ */
 @Composable
 fun MainScreen(statusMessage: String, onStartClicked: () -> Unit, onOpenSettingsClicked: () -> Unit) {
     Column(
@@ -230,11 +258,11 @@ fun MainScreen(statusMessage: String, onStartClicked: () -> Unit, onOpenSettings
         )
         Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = onStartClicked) {
-            Text(text = "Uruchom Usługę i Uprawnienia")
+            Text(text = "Start Service & Permissions")
         }
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(onClick = onOpenSettingsClicked) {
-            Text(text = "Otwórz Ustawienia Powiadomień")
+            Text(text = "Open Notification Settings")
         }
     }
 }
