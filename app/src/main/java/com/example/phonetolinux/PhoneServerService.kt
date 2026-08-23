@@ -10,6 +10,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.phonetolinux.*
+import com.example.phonetolinux.endpoints.*
 import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -19,9 +20,9 @@ import java.net.Socket
 import java.util.Collections
 
 /**
- * Główna usługa serwera HTTP działająca w tle na systemie Android.
- * Zarządza gniazdem sieciowym (Socket), strumieniem SSE (/sms_stream)
- * i deleguje standardowe żądania HTTP do odpowiednich wtyczek (EndpointHandler).
+ * Main HTTP server background service running on Android.
+ * Manages the network socket, SSE stream (/sms_stream),
+ * and delegates standard HTTP requests to appropriate endpoint handlers.
  *
  * @author Stanisław Tlołka
  */
@@ -31,7 +32,7 @@ class PhoneServerService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isRunning = false
 
-    // Rejestr wszystkich dostępnych wtyczek (endpointów) serwera
+    // Registry of all available server endpoint plugins
     private val endpoints = listOf(
         PingEndpoint(),
         ContactsEndpoint(),
@@ -39,7 +40,7 @@ class PhoneServerService : Service() {
         ChatHistoryEndpoint(),
         CallEndpoint(),
         SendSmsEndpoint(),
-        BluetoothAudioEndpoint() // <-- Nowa wtyczka obsługująca zestaw głośnomówiący Bluetooth (PC)
+        BluetoothAudioEndpoint() // <-- Bluetooth hands-free audio routing plugin for PC
     )
 
     companion object {
@@ -50,10 +51,10 @@ class PhoneServerService : Service() {
         private val clients = Collections.synchronizedList(mutableListOf<PrintWriter>())
 
         /**
-         * Wysyła powiadomienie o nowym SMS przez otwarty strumień SSE do komputera.
+         * Broadcasts a new SMS notification over the open SSE stream to the computer.
          */
         fun broadcastSms(sender: String, message: String) {
-            Log.d(TAG, "broadcastSms wywołane dla nadawcy: $sender")
+            Log.d(TAG, "broadcastSms invoked for sender: $sender")
             synchronized(clients) {
                 val jsonPayload = "{\"event\":\"incoming_sms\",\"sender\":\"$sender\",\"message\":\"$message\"}"
                 val deadClients = mutableListOf<PrintWriter>()
@@ -72,7 +73,7 @@ class PhoneServerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
-        val notification = createNotification("PhonetoLinux Serwer działa w tle")
+        val notification = createNotification("PhonetoLinux Server running in background")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -86,7 +87,7 @@ class PhoneServerService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "PhonetoLinux Serwer w tle", NotificationManager.IMPORTANCE_HIGH)
+            val channel = NotificationChannel(CHANNEL_ID, "PhonetoLinux Background Server", NotificationManager.IMPORTANCE_HIGH)
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
@@ -129,12 +130,12 @@ class PhoneServerService : Service() {
             val writer = PrintWriter(socket.getOutputStream(), true)
 
             val requestLine = reader.readLine() ?: return
-            Log.d(TAG, "Otrzymano żądanie: $requestLine")
+            Log.d(TAG, "Received request: $requestLine")
 
             var headerLine = reader.readLine()
             while (!headerLine.isNullOrEmpty()) { headerLine = reader.readLine() }
 
-            // Strumień SSE jest obsługiwany natywnie ze względu na pętlę podtrzymującą (keep-alive)
+            // SSE stream is handled natively due to the keep-alive loop requirement
             if (requestLine.startsWith("GET /sms_stream")) {
                 writer.println("HTTP/1.1 200 OK")
                 writer.println("Content-Type: text/event-stream")
@@ -158,8 +159,8 @@ class PhoneServerService : Service() {
                 return
             }
 
-            // --- SYSTEM WTYCZEK ---
-            // Szukamy wtyczki, która pasuje do otrzymanego adresu URL
+            // --- PLUGIN SYSTEM ---
+            // Search for an endpoint plugin matching the requested URL path
             val handler = endpoints.find { requestLine.contains("GET ${it.path}") }
 
             val statusCode: String
