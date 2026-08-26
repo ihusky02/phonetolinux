@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
                     PairingScreen(
                         onPairingSuccess = {
                             isPaired = true
+                            checkAndRequestPermissions()
                         }
                     )
                 } else {
@@ -104,7 +106,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (hasAllPermissions()) {
+        if (isPaired && hasAllPermissions()) {
             serviceStatusText = HttpUtils.getLocalizedText("running_status")
         }
     }
@@ -127,6 +129,8 @@ class MainActivity : ComponentActivity() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
         }
 
         return permissions.all {
@@ -152,6 +156,8 @@ class MainActivity : ComponentActivity() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
         }
 
         val missingPermissions = permissions.filter {
@@ -197,11 +203,15 @@ class MainActivity : ComponentActivity() {
 
     // Starts the foreground service handling communication with Linux
     private fun startPhoneService() {
-        val serviceIntent = Intent(this, PhoneServerService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
+        try {
+            val serviceIntent = Intent(this, PhoneServerService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to start PhoneServerService: ${e.message}", e)
         }
     }
 
