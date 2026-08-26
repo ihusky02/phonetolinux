@@ -1,7 +1,5 @@
 package com.example.phonetolinux.ui.theme
 
-import android.content.Intent
-import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -25,7 +23,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 /**
  * Composable screen allowing the user to input the Linux desktop IP address
  * and the 6-digit PIN to establish a secure pairing session.
- * Automatically starts the PhoneServerService and passes the active port upon successful pairing.
+ * Delegates background service initialization to MainActivity upon successful authentication.
  *
  * @author Stanisław Tlołka
  */
@@ -96,7 +94,6 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
                         val api = retrofit.create(PairingApiService::class.java)
 
                         val androidMac = "02:00:00:00:00:01"
-                        // Dynamic transmission of both PIN and active server port (5000)
                         val requestPayload = PairingRequest(
                             androidMacAddress = androidMac,
                             pairingPin = pinCode,
@@ -108,15 +105,7 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
                         if (response.isSuccessful && response.body()?.status == "SUCCESS") {
                             launch(Dispatchers.Main) {
                                 Toast.makeText(context, HttpUtils.getLocalizedText("toast_success"), Toast.LENGTH_LONG).show()
-
-                                // Start the background HTTP server service right after successful pairing
-                                val serviceIntent = Intent(context, PhoneServerService::class.java)
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                    context.startForegroundService(serviceIntent)
-                                } else {
-                                    context.startService(serviceIntent)
-                                }
-
+                                // Delegate server startup and view transition to MainActivity
                                 onPairingSuccess()
                             }
                         } else {

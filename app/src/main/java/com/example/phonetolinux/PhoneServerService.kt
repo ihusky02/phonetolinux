@@ -1,14 +1,18 @@
 package com.example.phonetolinux.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.phonetolinux.CallEndpoint
 import com.example.phonetolinux.ContactsEndpoint
 import com.example.phonetolinux.PingEndpoint
@@ -80,19 +84,68 @@ class PhoneServerService : Service() {
         createNotificationChannel()
         val notification = createNotification("PhonetoLinux Server running in background")
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        } else {
-            startForeground(1, notification)
+        // Guard check: Validate required permissions for Android 15 FGS connectedDevice
+        if (!hasRequiredPermissions()) {
+            Log.e(TAG, "Missing required FGS permissions for connectedDevice. Stopping service to prevent crash.")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    1,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(1, notification)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground service: ${e.message}", e)
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         startHttpServer()
         return START_STICKY
     }
 
+    /**
+     * Checks whether all required Android 12+ / Android 15 runtime permissions
+     * for running a connectedDevice foreground service are currently granted.
+     */
+    private fun hasRequiredPermissions(): Boolean {
+        // Bluetooth permissions check for Android 12+ (API 31+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val hasBtConnect = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasBtConnect) return false
+        }
+
+        // FGS connectedDevice permission check for Android 14+ / 15 (API 34+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val hasFgsPermission = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasFgsPermission) return false
+        }
+
+        return true
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "PhonetoLinux Background Server", NotificationManager.IMPORTANCE_HIGH)
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "PhonetoLinux Background Server",
+                NotificationManager.IMPORTANCE_HIGH
+            )
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
