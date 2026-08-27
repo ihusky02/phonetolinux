@@ -53,8 +53,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Read stored pairing state from persistent SharedPreferences
+        isPaired = HttpUtils.isPaired(this)
+
         // Evaluate initial permissions state upon startup
         hasPermissions = hasAllPermissions()
+
+        // If device has all permissions and is already paired, ensure background service starts immediately
+        if (hasPermissions && isPaired) {
+            triggerServiceAndSettings()
+        }
 
         setContent {
             Surface(
@@ -69,10 +77,12 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // STEP 2: Display PIN pairing screen once permissions are secured
+                    // STEP 2: Display PIN pairing screen once permissions are secured (if not already paired)
                     !isPaired -> {
                         PairingScreen(
-                            onPairingSuccess = {
+                            onPairingSuccess = { desktopIp ->
+                                // Save persistent pairing info to SharedPreferences
+                                HttpUtils.savePairing(this@MainActivity, desktopIp)
                                 isPaired = true
                                 triggerServiceAndSettings()
                             }
@@ -134,6 +144,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         hasPermissions = hasAllPermissions()
+        isPaired = HttpUtils.isPaired(this)
+
         if (hasPermissions && isPaired) {
             serviceStatusText = HttpUtils.getLocalizedText("running_status")
         }

@@ -23,12 +23,12 @@ import retrofit2.converter.gson.GsonConverterFactory
 /**
  * Composable screen allowing the user to input the Linux desktop IP address
  * and the 6-digit PIN to establish a secure pairing session.
- * Delegates background service initialization to MainActivity upon successful authentication.
+ * Delegates background service initialization and IP persistence to MainActivity.
  *
  * @author Stanisław Tlołka
  */
 @Composable
-fun PairingScreen(onPairingSuccess: () -> Unit) {
+fun PairingScreen(onPairingSuccess: (String) -> Unit) {
     var ipAddress by remember { mutableStateOf("") }
     var pinCode by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
@@ -76,7 +76,8 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
 
         Button(
             onClick = {
-                if (ipAddress.isBlank() || pinCode.length != 6) {
+                val targetIp = ipAddress.trim()
+                if (targetIp.isBlank() || pinCode.length != 6) {
                     Toast.makeText(context, HttpUtils.getLocalizedText("toast_invalid_input"), Toast.LENGTH_SHORT).show()
                     return@Button
                 }
@@ -87,7 +88,7 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
                         val retrofit = Retrofit.Builder()
-                            .baseUrl("http://$ipAddress:5000/")
+                            .baseUrl("http://$targetIp:5000/")
                             .addConverterFactory(GsonConverterFactory.create())
                             .build()
 
@@ -100,13 +101,13 @@ fun PairingScreen(onPairingSuccess: () -> Unit) {
                             serverPort = PhoneServerService.PORT
                         )
 
-                        val response = api.sendPairingRequest("http://$ipAddress:5000/pair/", requestPayload)
+                        val response = api.sendPairingRequest("http://$targetIp:5000/pair/", requestPayload)
 
                         if (response.isSuccessful && response.body()?.status == "SUCCESS") {
                             launch(Dispatchers.Main) {
                                 Toast.makeText(context, HttpUtils.getLocalizedText("toast_success"), Toast.LENGTH_LONG).show()
-                                // Delegate server startup and view transition to MainActivity
-                                onPairingSuccess()
+                                // Delegate server startup, IP storage and view transition to MainActivity
+                                onPairingSuccess(targetIp)
                             }
                         } else {
                             launch(Dispatchers.Main) {

@@ -1,13 +1,56 @@
 package com.example.phonetolinux
 
+import android.content.Context
 import java.net.URLDecoder
 import java.util.Locale
 
 /**
  * Helper utilities for processing HTTP requests, URL parameters,
- * and multi-language support based on system locale.
+ * multi-language support based on system locale, and persistent pairing storage.
  */
 object HttpUtils {
+
+    private const val PREFS_NAME = "phonetolinux_prefs"
+    private const val KEY_DESKTOP_IP = "desktop_ip"
+    private const val KEY_IS_PAIRED = "is_paired"
+
+    /**
+     * Persistently saves pairing status and desktop IP to Android SharedPreferences.
+     */
+    fun savePairing(context: Context, desktopIp: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString(KEY_DESKTOP_IP, desktopIp.trim())
+            .putBoolean(KEY_IS_PAIRED, true)
+            .apply()
+    }
+
+    /**
+     * Retrieves the stored desktop IP address from SharedPreferences.
+     */
+    fun getDesktopIp(context: Context): String? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_DESKTOP_IP, null)
+    }
+
+    /**
+     * Checks whether the application has a saved, active pairing status.
+     */
+    fun isPaired(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_IS_PAIRED, false)
+    }
+
+    /**
+     * Clears saved pairing status and stored IP address (unpairs device).
+     */
+    fun clearPairing(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .remove(KEY_DESKTOP_IP)
+            .putBoolean(KEY_IS_PAIRED, false)
+            .apply()
+    }
 
     /**
      * Returns localized text based on the user's current system language.
@@ -92,6 +135,9 @@ object HttpUtils {
         }
     }
 
+    /**
+     * Parses HTTP request lines to extract query parameters.
+     */
     fun extractQueryParam(requestLine: String, paramName: String): String {
         try {
             val parts = requestLine.split(" ")
