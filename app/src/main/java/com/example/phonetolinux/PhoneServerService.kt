@@ -13,7 +13,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.example.phonetolinux.CallEndpoint
+import com.example.phonetolinux.endpoints.CallEndpoint
 import com.example.phonetolinux.ContactsEndpoint
 import com.example.phonetolinux.PingEndpoint
 import com.example.phonetolinux.endpoints.BluetoothAudioEndpoint
