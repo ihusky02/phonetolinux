@@ -19,7 +19,7 @@ import com.example.phonetolinux.PingEndpoint
 import com.example.phonetolinux.endpoints.BluetoothAudioEndpoint
 import com.example.phonetolinux.endpoints.ChatHistoryEndpoint
 import com.example.phonetolinux.endpoints.ConversationsEndpoint
-import com.example.phonetolinux.endpoints.DeleteConversationEndpoint // <-- Import of the new delete endpoint plugin
+import com.example.phonetolinux.endpoints.DeleteConversationEndpoint
 import com.example.phonetolinux.endpoints.MessagesEndpoint
 import com.example.phonetolinux.endpoints.SendSmsEndpoint
 import kotlinx.coroutines.*
@@ -50,7 +50,7 @@ class PhoneServerService : Service() {
         ConversationsEndpoint(),
         ChatHistoryEndpoint(),
         MessagesEndpoint(),
-        DeleteConversationEndpoint(), // <-- Registered delete conversation plugin
+        DeleteConversationEndpoint(),
         CallEndpoint(),
         SendSmsEndpoint(),
         BluetoothAudioEndpoint()
@@ -70,6 +70,26 @@ class PhoneServerService : Service() {
             Log.d(TAG, "broadcastSms invoked for sender: $sender")
             synchronized(clients) {
                 val jsonPayload = "{\"event\":\"incoming_sms\",\"sender\":\"$sender\",\"message\":\"$message\"}"
+                val deadClients = mutableListOf<PrintWriter>()
+                for (writer in clients) {
+                    try {
+                        writer.println("data: $jsonPayload\n")
+                        writer.flush()
+                    } catch (e: Exception) {
+                        deadClients.add(writer)
+                    }
+                }
+                clients.removeAll(deadClients)
+            }
+        }
+
+        /**
+         * Broadcasts a voice call state event over the SSE stream to the connected Linux desktop.
+         */
+        fun broadcastCallEvent(event: String, number: String) {
+            Log.d(TAG, "broadcastCallEvent: event=$event, number=$number")
+            synchronized(clients) {
+                val jsonPayload = "{\"event\":\"$event\",\"number\":\"$number\"}"
                 val deadClients = mutableListOf<PrintWriter>()
                 for (writer in clients) {
                     try {
