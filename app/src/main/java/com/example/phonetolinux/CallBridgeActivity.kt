@@ -1,9 +1,11 @@
 package com.example.phonetolinux
 
 import android.Manifest
+import android.app.ActivityOptions
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -11,7 +13,7 @@ import androidx.core.content.ContextCompat
 
 /**
  * Transparent bridge activity that bypasses background activity start restrictions.
- * Instantly triggers system phone call and closes itself.
+ * Explicitly passes Background Activity Launch (BAL) permissions to the system dialer.
  */
 class CallBridgeActivity : ComponentActivity() {
 
@@ -38,8 +40,18 @@ class CallBridgeActivity : ComponentActivity() {
             val callIntent = Intent(action, uri).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
-            startActivity(callIntent)
-            Log.d("CallBridgeActivity", "Triggered call to $number")
+
+            // Explicitly grant Background Activity Launch permission to the dialer intent on Android 14+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                val options = ActivityOptions.makeBasic().apply {
+                    pendingIntentBackgroundActivityStartMode = ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                }
+                startActivity(callIntent, options.toBundle())
+            } else {
+                startActivity(callIntent)
+            }
+
+            Log.d("CallBridgeActivity", "Successfully triggered direct dialer intent for $number")
         } catch (e: Exception) {
             Log.e("CallBridgeActivity", "Failed to start call intent: ${e.message}", e)
         }

@@ -13,7 +13,7 @@ import com.example.phonetolinux.HttpUtils
 
 /**
  * Endpoint plugin responsible for managing voice calls.
- * Explicitly grants BAL (Background Activity Launch) permissions on Android 14/15.
+ * Explicitly grants BAL (Background Activity Launch) permissions on Android 14/15 via PendingIntent.
  */
 class CallEndpoint : EndpointHandler {
     override val path = "/call"
@@ -51,7 +51,7 @@ class CallEndpoint : EndpointHandler {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            // Grant explicit BAL permission for Android 14/15 (API 34+)
+            // Grant explicit BAL permission for PendingIntent execution on Android 14/15 (API 34+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 val options = ActivityOptions.makeBasic().apply {
                     pendingIntentBackgroundActivityStartMode = ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
