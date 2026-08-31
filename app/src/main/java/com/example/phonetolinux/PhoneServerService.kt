@@ -19,6 +19,8 @@ import com.example.phonetolinux.PingEndpoint
 import com.example.phonetolinux.endpoints.BluetoothAudioEndpoint
 import com.example.phonetolinux.endpoints.ChatHistoryEndpoint
 import com.example.phonetolinux.endpoints.ConversationsEndpoint
+import com.example.phonetolinux.endpoints.DeleteConversationEndpoint // <-- Import of the new delete endpoint plugin
+import com.example.phonetolinux.endpoints.MessagesEndpoint
 import com.example.phonetolinux.endpoints.SendSmsEndpoint
 import kotlinx.coroutines.*
 import java.io.BufferedReader
@@ -47,9 +49,11 @@ class PhoneServerService : Service() {
         ContactsEndpoint(),
         ConversationsEndpoint(),
         ChatHistoryEndpoint(),
+        MessagesEndpoint(),
+        DeleteConversationEndpoint(), // <-- Registered delete conversation plugin
         CallEndpoint(),
         SendSmsEndpoint(),
-        BluetoothAudioEndpoint() // <-- Bluetooth hands-free audio routing plugin for PC
+        BluetoothAudioEndpoint()
     )
 
     companion object {
@@ -116,7 +120,6 @@ class PhoneServerService : Service() {
      * for running a connectedDevice foreground service are currently granted.
      */
     private fun hasRequiredPermissions(): Boolean {
-        // Bluetooth permissions check for Android 12+ (API 31+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val hasBtConnect = ContextCompat.checkSelfPermission(
                 this,
@@ -126,7 +129,6 @@ class PhoneServerService : Service() {
             if (!hasBtConnect) return false
         }
 
-        // FGS connectedDevice permission check for Android 14+ / 15 (API 34+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val hasFgsPermission = ContextCompat.checkSelfPermission(
                 this,
@@ -218,8 +220,8 @@ class PhoneServerService : Service() {
             }
 
             // --- PLUGIN SYSTEM ---
-            // Search for an endpoint plugin matching the requested URL path
-            val handler = endpoints.find { requestLine.contains("GET ${it.path}") }
+            // Search for an endpoint plugin matching the requested URL path (supports GET, DELETE, etc.)
+            val handler = endpoints.find { requestLine.contains(it.path) }
 
             val statusCode: String
             val responseBody: String

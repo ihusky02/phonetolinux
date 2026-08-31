@@ -12,9 +12,9 @@ import org.json.JSONObject
 
 /**
  * Main module for SMS operations.
- * Contains business logic for dispatching text messages via SmsManager
- * and querying the system database (ContentResolver) to retrieve chat history
- * and active conversation threads.
+ * Contains business logic for dispatching text messages via SmsManager,
+ * querying the system database (ContentResolver) to retrieve chat history
+ * and active conversation threads, and deleting messages upon desktop request.
  */
 object SmsHandler {
     private const val TAG = "SmsHandler"
@@ -106,16 +106,13 @@ object SmsHandler {
     fun fetchChatHistoryJson(contentResolver: ContentResolver, queryParam: String): String {
         val messages = mutableListOf<String>()
         try {
-            // If queryParam contains letters (e.g., contact display name), resolve it to a phone number
             var searchNumber = queryParam
             if (queryParam.any { char -> char.isLetter() }) {
                 searchNumber = getPhoneNumberByName(contentResolver, queryParam)
                 Log.d(TAG, "Resolved name '$queryParam' to number: '$searchNumber'")
             }
 
-            // Extract numeric digits (normalizing phone format to last 9 digits)
-            val cleanQueryNumber = searchNumber.replace(Regex("[^0-9]"), "").takeLast(9)
-            Log.d(TAG, "Fetching history for: '$queryParam' -> normalized: '$cleanQueryNumber'")
+            Log.d(TAG, "Fetching history for queryParam: '$queryParam'")
 
             val uri = Uri.parse("content://sms/")
             val cursor = contentResolver.query(
@@ -133,15 +130,11 @@ object SmsHandler {
 
                 while (it.moveToNext()) {
                     val address = if (addressIdx != -1) it.getString(addressIdx) ?: "" else ""
-                    val cleanAddress = address.replace(Regex("[^0-9]"), "").takeLast(9)
 
-                    // Compare normalized phone suffixes (resilient to formatting differences, country codes, spaces)
-                    if (cleanQueryNumber.isNotEmpty() && cleanAddress.isNotEmpty() &&
-                        (cleanAddress == cleanQueryNumber || cleanAddress.endsWith(cleanQueryNumber) || cleanQueryNumber.endsWith(cleanAddress))) {
-
+                    if (isAddressMatching(address, queryParam)) {
                         val rawBody = if (bodyIdx != -1) it.getString(bodyIdx) ?: "" else ""
 
-                        // Sanitize newline characters (0x0A) and escape unescaped double quotes inside JSON
+                        // Sanitize newline characters and escape unescaped double quotes inside JSON
                         val body = rawBody
                             .replace("\\", "\\\\")
                             .replace("\"", "\\\"")
@@ -162,6 +155,109 @@ object SmsHandler {
             e.printStackTrace()
         }
         return "[${messages.joinToString(",")}]"
+    }
+
+    /**
+     * Deletes SMS conversation messages matching a specific recipient, phone number, or contact name
+     * using the unified isAddressMatching logic and batch selection deletion.
+     */
+    fun deleteConversationByAddress(contentResolver: ContentResolver, queryParam: String): Boolean {
+        try {
+            Log.d(TAG, "Deleting messages for queryParam: '$queryParam'")
+
+            val uri = Uri.parse("content://sms/")
+            val cursor = contentResolver.query(
+                uri,
+                null,
+                null,
+                null,
+                null
+            )
+
+            val idsToDelete = mutableListOf<String>()
+            cursor?.use {
+                val idIdx = it.getColumnIndex(Telephony.Sms._ID)
+                val addressIdx = it.getColumnIndex("address")
+
+                while (it.moveToNext()) {
+                    val address = if (addressIdx != -1) it.getString(addressIdx) ?: "" else ""
+
+                    if (isAddressMatching(address, queryParam)) {
+                        val id = if (idIdx != -1) it.getString(idIdx) else continue
+                        idsToDelete.add(id)
+                    }
+                }
+            }
+
+            Log.d(TAG, "Found ${idsToDelete.size} message IDs to delete for: $queryParam")
+
+            if (idsToDelete.isEmpty()) {
+                Log.d(TAG, "No messages found to delete for: $queryParam")
+                return false
+            }
+
+            var deletedCount = 0
+            val inClause = idsToDelete.joinToString(",")
+            val selection = "${Telephony.Sms._ID} IN ($inClause)"
+
+            try {
+                // Batch deletion using selection clause
+                deletedCount = contentResolver.delete(uri, selection, null)
+            } catch (ex: Exception) {
+                Log.w(TAG, "Batch deletion failed, falling back to individual deletes: ${ex.message}")
+                for (id in idsToDelete) {
+                    val singleUri = Uri.withAppendedPath(Telephony.Sms.CONTENT_URI, id)
+                    val deleted = contentResolver.delete(singleUri, null, null)
+                    if (deleted > 0) deletedCount++
+                }
+            }
+
+            Log.d(TAG, "Successfully deleted $deletedCount messages for: $queryParam")
+            return deletedCount > 0
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Log.e(TAG, "Error deleting messages: ${e.message}", e)
+            return false
+        }
+    }
+
+    /**
+     * Universal matching helper handling standard numbers, short numbers, and alphanumeric sender IDs.
+     */
+    private fun isAddressMatching(dbAddress: String, query: String): Boolean {
+        if (dbAddress.isBlank() || query.isBlank()) return false
+
+        val trimmedDb = dbAddress.trim()
+        val trimmedQuery = query.trim()
+
+        // 1. Exact match (case-insensitive for alphanumeric senders like PLAY, LeroyMerlin, TFI Allianz)
+        if (trimmedDb.equals(trimmedQuery, ignoreCase = true)) {
+            return true
+        }
+
+        // 2. Substring containment for text identifiers (promotional/lottery names)
+        if (trimmedDb.contains(trimmedQuery, ignoreCase = true) || trimmedQuery.contains(trimmedDb, ignoreCase = true)) {
+            return true
+        }
+
+        // 3. Numeric comparison for phone numbers and short/special service numbers
+        val dbDigits = trimmedDb.replace(Regex("[^0-9]"), "")
+        val queryDigits = trimmedQuery.replace(Regex("[^0-9]"), "")
+
+        if (dbDigits.isNotEmpty() && queryDigits.isNotEmpty()) {
+            if (dbDigits == queryDigits) {
+                return true
+            }
+            val takeCount = minOf(9, minOf(dbDigits.length, queryDigits.length))
+            val subDb = dbDigits.takeLast(takeCount)
+            val subQuery = queryDigits.takeLast(takeCount)
+
+            if (subDb == subQuery || subDb.endsWith(subQuery) || subQuery.endsWith(subDb)) {
+                return true
+            }
+        }
+
+        return false
     }
 
     /**
