@@ -1,69 +1,174 @@
 package com.example.phonetolinux.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.Context
 import android.content.Intent
-import android.media.AudioManager
-import android.net.wifi.WifiManager
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.Environment
 import android.os.IBinder
-import android.telephony.PhoneStateListener
-import android.telephony.TelephonyCallback
-import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import com.example.phonetolinux.endpoints.CallEndpoint
+import com.example.phonetolinux.ContactsEndpoint
+import com.example.phonetolinux.PingEndpoint
+import com.example.phonetolinux.endpoints.BluetoothAudioEndpoint
+import com.example.phonetolinux.endpoints.ChatHistoryEndpoint
+import com.example.phonetolinux.endpoints.ConversationsEndpoint
+import com.example.phonetolinux.endpoints.DeleteConversationEndpoint
+import com.example.phonetolinux.endpoints.MessagesEndpoint
+import com.example.phonetolinux.endpoints.SendSmsEndpoint
+import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.PrintWriter
 import java.net.ServerSocket
 import java.net.Socket
-import java.util.concurrent.Executors
+import java.util.Collections
 
+/**
+ * Main HTTP server background service running on Android.
+ * Manages the network socket, SSE stream (/sms_stream),
+ * and delegates standard HTTP requests to appropriate endpoint handlers.
+ *
+ * @author Stanisław Tlołka
+ */
 class PhoneServerService : Service() {
 
-    private val executor = Executors.newSingleThreadExecutor()
     private var serverSocket: ServerSocket? = null
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isRunning = false
-    private lateinit var telephonyManager: TelephonyManager
+
+    // Registry of all available server endpoint plugins
+    private val endpoints = listOf(
+        PingEndpoint(),
+        ContactsEndpoint(),
+        ConversationsEndpoint(),
+        ChatHistoryEndpoint(),
+        MessagesEndpoint(),
+        DeleteConversationEndpoint(),
+        CallEndpoint(),
+        SendSmsEndpoint(),
+        BluetoothAudioEndpoint()
+    )
 
     companion object {
         const val CHANNEL_ID = "PhoneToLinuxChannel"
         const val PORT = 5000
-    }
+        private const val TAG = "PhoneToLinuxServer"
 
-    override fun onCreate() {
-        super.onCreate()
+        private val clients = Collections.synchronizedList(mutableListOf<PrintWriter>())
+
+        /**
+         * Broadcasts a new SMS notification over the open SSE stream to the computer.
+         */
+        fun broadcastSms(sender: String, message: String) {
+            Log.d(TAG, "broadcastSms invoked for sender: $sender")
+            synchronized(clients) {
+                val jsonPayload = "{\"event\":\"incoming_sms\",\"sender\":\"$sender\",\"message\":\"$message\"}"
+                val deadClients = mutableListOf<PrintWriter>()
+                for (writer in clients) {
+                    try {
+                        writer.println("data: $jsonPayload\n")
+                        writer.flush()
+                    } catch (e: Exception) {
+                        deadClients.add(writer)
+                    }
+                }
+                clients.removeAll(deadClients)
+            }
+        }
+
+        /**
+         * Broadcasts a voice call state event over the SSE stream to the connected Linux desktop.
+         */
+        fun broadcastCallEvent(event: String, number: String) {
+            Log.d(TAG, "broadcastCallEvent: event=$event, number=$number")
+            synchronized(clients) {
+                val jsonPayload = "{\"event\":\"$event\",\"number\":\"$number\"}"
+                val deadClients = mutableListOf<PrintWriter>()
+                for (writer in clients) {
+                    try {
+                        writer.println("data: $jsonPayload\n")
+                        writer.flush()
+                    } catch (e: Exception) {
+                        deadClients.add(writer)
+                    }
+                }
+                clients.removeAll(deadClients)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
-        val notification = createNotification("PhonetoLinux działa w tle")
+        val notification = createNotification("PhonetoLinux Server running in background")
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(1, notification)
+        // Guard check: Validate required permissions for Android 15 FGS connectedDevice
+        if (!hasRequiredPermissions()) {
+            Log.e(TAG, "Missing required FGS permissions for connectedDevice. Stopping service to prevent crash.")
+            stopSelf()
+            return START_NOT_STICKY
         }
 
-        telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
-        setupCallStateListener()
-        startHttpServer()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    1,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(1, notification)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground service: ${e.message}", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
+        startHttpServer()
         return START_STICKY
+    }
+
+    /**
+     * Checks whether all required Android 12+ / Android 15 runtime permissions
+     * for running a connectedDevice foreground service are currently granted.
+     */
+    private fun hasRequiredPermissions(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val hasBtConnect = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasBtConnect) return false
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val hasFgsPermission = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasFgsPermission) return false
+        }
+
+        return true
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "PhonetoLinux Serwer w tle",
-                NotificationManager.IMPORTANCE_LOW
+                "PhonetoLinux Background Server",
+                NotificationManager.IMPORTANCE_HIGH
             )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
@@ -72,59 +177,26 @@ class PhoneServerService : Service() {
             .setContentTitle("PhonetoLinux Bridge")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
-    }
-
-    private fun setupCallStateListener() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            try {
-                telephonyManager.registerTelephonyCallback(
-                    mainExecutor,
-                    object : TelephonyCallback(), TelephonyCallback.CallStateListener {
-                        override fun onCallStateChanged(state: Int) {
-                            handleCallState(state)
-                        }
-                    }
-                )
-            } catch (e: Exception) {
-                fallbackPhoneStateListener()
-            }
-        } else {
-            fallbackPhoneStateListener()
-        }
-    }
-
-    private fun fallbackPhoneStateListener() {
-        @Suppress("DEPRECATION")
-        telephonyManager.listen(object : PhoneStateListener() {
-            @Deprecated("Deprecated in Java")
-            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                super.onCallStateChanged(state, phoneNumber)
-                handleCallState(state)
-            }
-        }, PhoneStateListener.LISTEN_CALL_STATE)
-    }
-
-    private fun handleCallState(state: Int) {
-        val status = when (state) {
-            TelephonyManager.CALL_STATE_RINGING -> "RINGING"
-            TelephonyManager.CALL_STATE_OFFHOOK -> "ACTIVE"
-            TelephonyManager.CALL_STATE_IDLE -> "IDLE"
-            else -> "UNKNOWN"
-        }
-        Log.d("PhoneToLinux", "Stan połączenia: $status")
     }
 
     private fun startHttpServer() {
         if (isRunning) return
         isRunning = true
-        executor.execute {
+
+        serviceScope.launch {
             try {
                 serverSocket = ServerSocket(PORT)
                 while (isRunning) {
-                    val socket = serverSocket?.accept()
-                    socket?.let { handleClient(it) }
+                    try {
+                        val clientSocket = serverSocket?.accept() ?: break
+                        launch(Dispatchers.IO) { handleClient(clientSocket) }
+                    } catch (e: Exception) {
+                        if (!isRunning) break
+                        e.printStackTrace()
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -135,185 +207,64 @@ class PhoneServerService : Service() {
     private fun handleClient(socket: Socket) {
         try {
             val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            val writer = PrintWriter(socket.getOutputStream(), true)
+
             val requestLine = reader.readLine() ?: return
+            Log.d(TAG, "Received request: $requestLine")
 
-            var contentLength = 0
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                if (line.isNullOrEmpty()) break
-                if (line.startsWith("Content-Length:", ignoreCase = true)) {
-                    contentLength = line.substring(15).trim().toIntOrNull() ?: 0
+            var headerLine = reader.readLine()
+            while (!headerLine.isNullOrEmpty()) { headerLine = reader.readLine() }
+
+            // SSE stream is handled natively due to the keep-alive loop requirement
+            if (requestLine.startsWith("GET /sms_stream")) {
+                writer.println("HTTP/1.1 200 OK")
+                writer.println("Content-Type: text/event-stream")
+                writer.println("Connection: keep-alive\n")
+                writer.flush()
+
+                synchronized(clients) { clients.add(writer) }
+
+                var pingCounter = 0
+                while (isRunning && !socket.isClosed) {
+                    Thread.sleep(5000)
+                    pingCounter++
+                    if (pingCounter >= 3) {
+                        try {
+                            writer.println(": ping\n")
+                            writer.flush()
+                        } catch (e: Exception) { break }
+                        pingCounter = 0
+                    }
                 }
+                return
             }
 
-            val output = socket.getOutputStream()
-            var response: String
+            // --- PLUGIN SYSTEM ---
+            // Search for an endpoint plugin matching the requested URL path (supports GET, DELETE, etc.)
+            val handler = endpoints.find { requestLine.contains(it.path) }
 
-            if (requestLine.contains("/contacts")) {
-                val jsonContacts = fetchContactsJson()
-                response = "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n$jsonContacts"
-            }
-            else if (requestLine.contains("/send-sms")) {
-                val charBuffer = CharArray(contentLength)
-                reader.read(charBuffer)
-                val body = String(charBuffer)
+            val statusCode: String
+            val responseBody: String
 
-                val phone = extractJsonValue(body, "phone")
-                val message = extractJsonValue(body, "message")
-                val success = sendSmsToPhone(phone, message)
-
-                response = if (success) "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"success\"}"
-                else "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"failed\"}"
-            }
-            else if (requestLine.contains("/wifi")) {
-                val charBuffer = CharArray(contentLength)
-                reader.read(charBuffer)
-                val body = String(charBuffer)
-                val enable = extractJsonValue(body, "enable").lowercase() == "true"
-
-                val success = setWifiEnabled(enable)
-                response = if (success) "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"success\"}"
-                else "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"failed\"}"
-            }
-            else if (requestLine.contains("/audio")) {
-                val charBuffer = CharArray(contentLength)
-                reader.read(charBuffer)
-                val body = String(charBuffer)
-                val mode = extractJsonValue(body, "mode") // "silent", "vibrate", "normal"
-
-                val success = setAudioMode(mode)
-                response = if (success) "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"success\"}"
-                else "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"failed\"}"
-            }
-            else if (requestLine.contains("/cellular")) {
-                val charBuffer = CharArray(contentLength)
-                reader.read(charBuffer)
-                val body = String(charBuffer)
-                val enable = extractJsonValue(body, "enable").lowercase() == "true"
-
-                val success = setCellularDataEnabled(enable)
-                response = if (success) "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"success\"}"
-                else "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"status\":\"failed\"}"
-            }
-            else if (requestLine.contains("/storage")) {
-                val fileListJson = getStorageFilesJson()
-                response = "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n$fileListJson"
-            }
-            else {
-                response = "HTTP/1.1 404 Not Found\r\n\r\nNot Found"
+            if (handler != null) {
+                val response = handler.handle(requestLine, this)
+                statusCode = response.statusCode
+                responseBody = response.body
+            } else {
+                statusCode = "404 Not Found"
+                responseBody = "Not Found"
             }
 
-            output.write(response.toByteArray(Charsets.UTF_8))
-            output.flush()
+            writer.println("HTTP/1.1 $statusCode")
+            writer.println("Content-Type: application/json; charset=UTF-8")
+            writer.println("Content-Length: ${responseBody.toByteArray().size}")
+            writer.println("Connection: close\n")
+            writer.println(responseBody)
+
             socket.close()
         } catch (e: Exception) {
             e.printStackTrace()
         }
-    }
-
-    private fun extractJsonValue(json: String, key: String): String {
-        return try {
-            val regex = "\"$key\"\\s*:\\s*\"([^\"]*)\"".toRegex()
-            val match = regex.find(json)
-            match?.groups?.get(1)?.value ?: ""
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
-    private fun setWifiEnabled(enable: Boolean): Boolean {
-        return try {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                @Suppress("DEPRECATION")
-                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                @Suppress("DEPRECATION")
-                wifiManager.isWifiEnabled = enable
-                true
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun setAudioMode(mode: String): Boolean {
-        return try {
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            when (mode.lowercase()) {
-                "silent" -> audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
-                "vibrate" -> audioManager.ringerMode = AudioManager.RINGER_MODE_VIBRATE
-                "normal" -> audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
-                else -> return false
-            }
-            true
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun setCellularDataEnabled(enable: Boolean): Boolean {
-        return try {
-            val intent = Intent(android.provider.Settings.ACTION_DATA_ROAMING_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            applicationContext.startActivity(intent)
-            true
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun getStorageFilesJson(): String {
-        return try {
-            val path = Environment.getExternalStorageDirectory()
-            val files = path.listFiles() ?: arrayOf()
-            val jsonList = files.map { "{\"name\":\"${it.name}\",\"isDirectory\":${it.isDirectory}}" }
-            "[${jsonList.joinToString(",")}]"
-        } catch (e: Exception) {
-            "[]"
-        }
-    }
-
-    private fun sendSmsToPhone(phoneNumber: String, message: String): Boolean {
-        return try {
-            if (phoneNumber.isEmpty() || message.isEmpty()) return false
-
-            val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                applicationContext.getSystemService(android.telephony.SmsManager::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                android.telephony.SmsManager.getDefault()
-            }
-
-            smsManager?.sendTextMessage(phoneNumber, null, message, null, null)
-            true
-        } catch (e: Exception) {
-            Log.e("PhoneToLinux", "Błąd wysyłania SMS: ${e.message}")
-            false
-        }
-    }
-
-    private fun fetchContactsJson(): String {
-        val contactsList = mutableListOf<String>()
-        val cursor = contentResolver.query(
-            android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-            null, null, null,
-            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
-        )
-
-        cursor?.use {
-            val nameIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-            val numberIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-
-            while (it.moveToNext()) {
-                val name = it.getString(nameIdx) ?: "Nieznany"
-                val number = it.getString(numberIdx) ?: ""
-                contactsList.add("{\"name\":\"$name\",\"phone\":\"$number\"}")
-            }
-        }
-
-        return "[${contactsList.joinToString(",")}]"
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -321,6 +272,7 @@ class PhoneServerService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
-        serverSocket?.close()
+        try { serverSocket?.close() } catch (e: Exception) { e.printStackTrace() }
+        serviceScope.cancel()
     }
 }
