@@ -1,0 +1,1 @@
+Integracja połączeń i SMS-ów Androida z pulpitem Linux.

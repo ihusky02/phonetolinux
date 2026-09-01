@@ -1,0 +1,7 @@
+PhoneToLinux umożliwia bezobsługowe zarządzanie telefonem z poziomu komputera z systemem Linux.
+
+Główne funkcje:
+- Wykonywanie i odbieranie połączeń głosowych z pulpitu.
+- Wysyłanie oraz odbieranie wiadomości SMS.
+- Przesyłanie powiadomień i synchronizacja kontaktów.
+- Pełna prywatność: połączenie odbywa się wyłącznie w sieci lokalnej bez udziału chmury.
