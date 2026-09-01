@@ -15,7 +15,8 @@ import com.example.phonetolinux.HttpUtils
 
 /**
  * Endpoint plugin responsible for managing voice calls.
- * Uses TelecomManager API to initiate calls directly and bypass Background Activity Launch (BAL) blocks.
+ * Uses TelecomManager API to initiate, answer, and terminate calls directly,
+ * bypassing Background Activity Launch (BAL) blocks on modern Android versions.
  */
 class CallEndpoint : EndpointHandler {
     override val path = "/call"
@@ -59,7 +60,6 @@ class CallEndpoint : EndpointHandler {
                     putBoolean(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, false)
                 }
 
-                // Triggers call directly through system telephony framework
                 telecomManager.placeCall(uri, extras)
                 Log.d(tag, "Successfully placed call via TelecomManager to: $number")
                 EndpointResponse(statusCode = "200 OK", body = "{\"success\":true,\"action\":\"dialing\"}")
@@ -79,13 +79,29 @@ class CallEndpoint : EndpointHandler {
         }
     }
 
+    /**
+     * Answers an incoming call using TelecomManager.
+     */
     private fun answerCall(context: Context): EndpointResponse {
         return try {
             val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val hasAnswerPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ANSWER_PHONE_CALLS
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasAnswerPermission) {
+                Log.e(tag, "ANSWER_PHONE_CALLS permission not granted.")
+                return EndpointResponse(
+                    statusCode = "403 Forbidden",
+                    body = "{\"success\":false,\"error\":\"ANSWER_PHONE_CALLS permission missing\"}"
+                )
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && telecomManager != null) {
                 @Suppress("MissingPermission")
-                telecomManager?.acceptRingingCall()
-                Log.d(tag, "Incoming call accepted.")
+                telecomManager.acceptRingingCall()
+                Log.d(tag, "Incoming call accepted via TelecomManager.")
                 EndpointResponse(statusCode = "200 OK", body = "{\"success\":true,\"action\":\"answered\"}")
             } else {
                 EndpointResponse(
@@ -102,23 +118,46 @@ class CallEndpoint : EndpointHandler {
         }
     }
 
+    /**
+     * Resiliently terminates an active or ringing call using TelecomManager.
+     */
     private fun endCall(context: Context): EndpointResponse {
         return try {
             val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-            @Suppress("MissingPermission")
-            val success = telecomManager?.endCall() ?: false
+            val hasAnswerPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ANSWER_PHONE_CALLS
+            ) == PackageManager.PERMISSION_GRANTED
 
-            if (success) {
-                Log.d(tag, "Call ended successfully.")
-                EndpointResponse(statusCode = "200 OK", body = "{\"success\":true,\"action\":\"ended\"}")
+            if (!hasAnswerPermission) {
+                Log.e(tag, "ANSWER_PHONE_CALLS permission not granted for ending call.")
+                return EndpointResponse(
+                    statusCode = "403 Forbidden",
+                    body = "{\"success\":false,\"error\":\"ANSWER_PHONE_CALLS permission missing\"}"
+                )
+            }
+
+            if (telecomManager != null) {
+                @Suppress("MissingPermission")
+                val success = telecomManager.endCall()
+                Log.d(tag, "TelecomManager.endCall() result: $success")
+
+                if (success) {
+                    EndpointResponse(statusCode = "200 OK", body = "{\"success\":true,\"action\":\"ended\"}")
+                } else {
+                    EndpointResponse(
+                        statusCode = "500 Internal Server Error",
+                        body = "{\"success\":false,\"error\":\"TelecomManager returned false when ending call\"}"
+                    )
+                }
             } else {
                 EndpointResponse(
                     statusCode = "500 Internal Server Error",
-                    body = "{\"success\":false,\"error\":\"Failed to end call\"}"
+                    body = "{\"success\":false,\"error\":\"TelecomManager unavailable\"}"
                 )
             }
         } catch (e: Exception) {
-            Log.e(tag, "Error terminating call: ${e.message}", e)
+            Log.e(tag, "Error terminating call via TelecomManager: ${e.message}", e)
             EndpointResponse(
                 statusCode = "500 Internal Server Error",
                 body = "{\"success\":false,\"error\":\"${e.message}\"}"

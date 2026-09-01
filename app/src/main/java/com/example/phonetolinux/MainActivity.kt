@@ -24,7 +24,7 @@ import com.example.phonetolinux.ui.theme.PairingScreen
 
 /**
  * Main entry point activity for PhoneToLinux Android client.
- * Enforces permission initialization prior to desktop pairing to guarantee
+ * Enforces runtime permission initialization prior to desktop pairing to guarantee
  * background service stability on Android 14/15 (API 34/35).
  *
  * @author Stanisław Tlołka
@@ -153,28 +153,7 @@ class MainActivity : ComponentActivity() {
 
     // Evaluates whether all required Android 15 runtime permissions are granted
     private fun hasAllPermissions(): Boolean {
-        val permissions = mutableListOf(
-            Manifest.permission.READ_CONTACTS,
-            Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.READ_SMS,
-            Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.SEND_SMS,
-            Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.CALL_PHONE,
-            Manifest.permission.CHANGE_NETWORK_STATE,
-            Manifest.permission.CHANGE_WIFI_STATE
-        )
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
-            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
-            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
-        }
-
+        val permissions = getRequiredPermissionsList()
         return permissions.all {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
@@ -182,28 +161,7 @@ class MainActivity : ComponentActivity() {
 
     // Verifies missing permissions and launches system permission dialogs
     private fun checkAndRequestPermissions() {
-        val permissions = mutableListOf(
-            Manifest.permission.READ_CONTACTS,
-            Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.READ_SMS,
-            Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.SEND_SMS,
-            Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.CALL_PHONE,
-            Manifest.permission.CHANGE_NETWORK_STATE,
-            Manifest.permission.CHANGE_WIFI_STATE
-        )
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
-            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
-            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
-        }
-
+        val permissions = getRequiredPermissionsList()
         val missingPermissions = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
@@ -217,6 +175,38 @@ class MainActivity : ComponentActivity() {
                 triggerServiceAndSettings()
             }
         }
+    }
+
+    // Single source of truth for required runtime permissions
+    private fun getRequiredPermissionsList(): List<String> {
+        val permissions = mutableListOf(
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.CHANGE_NETWORK_STATE,
+            Manifest.permission.CHANGE_WIFI_STATE
+        )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            permissions.add(Manifest.permission.ANSWER_PHONE_CALLS)
+            permissions.add(Manifest.permission.MANAGE_OWN_CALLS)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+        }
+
+        return permissions
     }
 
     // Opens system notification settings page for current application
