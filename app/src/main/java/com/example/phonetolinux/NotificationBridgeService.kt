@@ -7,8 +7,10 @@ import android.util.Log
 
 /**
  * Notification listener service for Android.
- * Captures incoming SMS messages and active phone call notifications directly from the status bar
+ * Universally captures incoming SMS messages and active phone call alerts from the status bar
  * and broadcasts them in real-time to the connected Linux client via the SSE stream.
+ *
+ * @author Stanisław Tlołka
  */
 class NotificationBridgeService : NotificationListenerService() {
 
@@ -32,9 +34,13 @@ class NotificationBridgeService : NotificationListenerService() {
                 }
             }
 
-            // Forward incoming call notifications
-            if (packageName.contains("dialer") || packageName.contains("telecom") || packageName.contains("incallui")) {
-                PhoneServerService.broadcastCallEvent(event = "incoming_call", number = title)
+            // Universally forward incoming call notifications from any system dialer app
+            if (packageName.contains("dialer") || packageName.contains("telecom") || packageName.contains("incallui") || packageName.contains("phone")) {
+                if (text.contains("Przychodzące") || text.contains("Incoming") || text.contains("połączenie") || text.contains("Call") || text.isNotBlank()) {
+                    // Title contains the caller's name or number provided by the system dialer
+                    val callerInfo = if (title.isNotBlank()) title else "Unknown"
+                    PhoneServerService.broadcastCallEvent(event = "incoming_call", number = callerInfo)
+                }
             }
         }
     }
@@ -43,7 +49,7 @@ class NotificationBridgeService : NotificationListenerService() {
         super.onNotificationRemoved(sbn)
         sbn?.let {
             val packageName = it.packageName
-            if (packageName.contains("dialer") || packageName.contains("telecom") || packageName.contains("incallui")) {
+            if (packageName.contains("dialer") || packageName.contains("telecom") || packageName.contains("incallui") || packageName.contains("phone")) {
                 PhoneServerService.broadcastCallEvent(event = "call_ended", number = "")
             }
         }
