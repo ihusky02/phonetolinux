@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.phonetolinux"
+    namespace = "pl.stanislawtlolka.phonetolinux"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.phonetolinux"
+        applicationId = "pl.stanislawtlolka.phonetolinux"
         minSdk = 33
         targetSdk = 35
         versionCode = 1
