@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import pl.stanislawtlolka.phonetolinux.service.PhoneServerService
 import pl.stanislawtlolka.phonetolinux.ui.theme.PairingScreen
+import pl.stanislawtlolka.phonetolinux.ui.theme.PhonetolinuxTheme
 
 /**
  * Main entry point activity for PhoneToLinux Android client.
@@ -32,13 +33,13 @@ import pl.stanislawtlolka.phonetolinux.ui.theme.PairingScreen
 class MainActivity : ComponentActivity() {
 
     // Status message state localized based on system language
-    var serviceStatusText by mutableStateOf(HttpUtils.getLocalizedText("waiting_status"))
+    private var serviceStatusText by mutableStateOf(HttpUtils.getLocalizedText("waiting_status"))
 
     // State tracking runtime permissions status
-    var hasPermissions by mutableStateOf(false)
+    private var hasPermissions by mutableStateOf(false)
 
     // State controlling whether the device is authenticated and paired with Linux
-    var isPaired by mutableStateOf(false)
+    private var isPaired by mutableStateOf(false)
 
     // Launcher for handling multiple runtime permissions requests
     private val requestPermissionLauncher = registerForActivityResult(
@@ -65,51 +66,51 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                when {
-                    // STEP 1: Force runtime permissions setup first
-                    !hasPermissions -> {
-                        PermissionRequestScreen(
-                            onRequestPermissions = { checkAndRequestPermissions() }
-                        )
-                    }
+            PhonetolinuxTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    when {
+                        // STEP 1: Force runtime permissions setup first
+                        !hasPermissions -> {
+                            PermissionRequestScreen(
+                                onRequestPermissions = { checkAndRequestPermissions() }
+                            )
+                        }
 
-                    // STEP 2: Display PIN pairing screen once permissions are secured (if not already paired)
-                    !isPaired -> {
-                        PairingScreen(
-                            onPairingSuccess = { desktopIp ->
-                                // Save persistent pairing info to SharedPreferences
-                                HttpUtils.savePairing(this@MainActivity, desktopIp)
-                                isPaired = true
-                                triggerServiceAndSettings()
-                            }
-                        )
-                    }
+                        // STEP 2: Display PIN pairing screen once permissions are secured (if not already paired)
+                        !isPaired -> {
+                            PairingScreen(
+                                onPairingSuccess = { desktopIp ->
+                                    // Save persistent pairing info to SharedPreferences
+                                    HttpUtils.savePairing(this@MainActivity, desktopIp)
+                                    isPaired = true
+                                    triggerServiceAndSettings()
+                                }
+                            )
+                        }
 
-                    // STEP 3: Main server management dashboard
-                    else -> {
-                        MainScreen(
-                            statusMessage = serviceStatusText,
-                            onStartClicked = { checkAndRequestPermissions() },
-                            onOpenSettingsClicked = { openAppNotificationSettings() }
-                        )
+                        // STEP 3: Main server management dashboard
+                        else -> {
+                            MainScreen(
+                                statusMessage = serviceStatusText,
+                                onStartClicked = { checkAndRequestPermissions() },
+                                onOpenSettingsClicked = { openAppNotificationSettings() }
+                            )
+                        }
                     }
                 }
             }
         }
 
-        handleCallIntent(intent)
+        intent?.let { handleCallIntent(it) }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent != null) {
-            handleCallIntent(intent)
-        }
+        handleCallIntent(intent)
     }
 
     // Handles incoming call dispatch intents from the desktop bridge
