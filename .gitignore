@@ -20,3 +20,4 @@ swieze_logi.txt
 .idea/
 /phonetolinux-release-key.jks
 /app/release/
+app/build.gradle.kts
