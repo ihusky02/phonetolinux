@@ -27,6 +27,7 @@ import pl.stanislawtlolka.phonetolinux.endpoints.ConversationsEndpoint
 import pl.stanislawtlolka.phonetolinux.endpoints.DeleteConversationEndpoint
 import pl.stanislawtlolka.phonetolinux.endpoints.MessagesEndpoint
 import pl.stanislawtlolka.phonetolinux.endpoints.SendSmsEndpoint
+import pl.stanislawtlolka.phonetolinux.security.UdpDiscoveryServer
 import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -39,6 +40,7 @@ import java.util.Collections
  * Main HTTP server background service running on Android.
  * Manages the network socket, SSE stream (/sms_stream),
  * monitors telephony states (incoming calls) universally across all Android versions,
+ * UDP discovery listener for auto-IP detection,
  * and delegates standard HTTP requests to appropriate endpoint handlers.
  *
  * @author Stanisław Tlołka
@@ -51,6 +53,7 @@ class PhoneServerService : Service() {
     private var telephonyManager: TelephonyManager? = null
     private var telephonyCallback: Any? = null
     private var legacyPhoneStateListener: Any? = null
+    private var udpDiscoveryServer: UdpDiscoveryServer? = null
 
     // Registry of all available server endpoint plugins
     private val endpoints = listOf(
@@ -155,7 +158,22 @@ class PhoneServerService : Service() {
 
         registerCallStateListener()
         startHttpServer()
+        startUdpDiscoveryServer()
+
         return START_STICKY
+    }
+
+    private fun startUdpDiscoveryServer() {
+        val prefs = getSharedPreferences("phonetolinux_prefs", Context.MODE_PRIVATE)
+        val pairingSecret = prefs.getString("pairing_secret", null)
+
+        if (!pairingSecret.isNullOrEmpty()) {
+            udpDiscoveryServer = UdpDiscoveryServer(pairingSecret)
+            udpDiscoveryServer?.start(port = 8889)
+            Log.d(TAG, "UDP Discovery Server initialized on port 8889.")
+        } else {
+            Log.w(TAG, "Pairing secret not found. UDP Discovery Server skipped.")
+        }
     }
 
     private fun registerCallStateListener() {
@@ -350,6 +368,9 @@ class PhoneServerService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+
+        udpDiscoveryServer?.stop()
+        udpDiscoveryServer = null
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && telephonyCallback != null) {
             try {
