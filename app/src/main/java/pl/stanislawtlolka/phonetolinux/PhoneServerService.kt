@@ -339,6 +339,7 @@ class PhoneServerService : Service() {
             }
 
             // --- PLUGIN SYSTEM ---
+            // --- PLUGIN SYSTEM ---
             val handler = endpoints.find { requestLine.contains(it.path) }
             val statusCode: String
             val responseBody: String
@@ -352,12 +353,15 @@ class PhoneServerService : Service() {
                 responseBody = "Not Found"
             }
 
+            val bodyBytes = responseBody.toByteArray(Charsets.UTF_8)
+
             writer.println("HTTP/1.1 $statusCode")
             writer.println("Content-Type: application/json; charset=UTF-8")
-            writer.println("Content-Length: ${responseBody.toByteArray().size}")
+            writer.println("Content-Length: ${bodyBytes.size}")
             writer.println("Connection: close")
             writer.println()
-            writer.println(responseBody)
+            writer.print(responseBody)
+            writer.flush()
 
             socket.close()
         } catch (e: Exception) {

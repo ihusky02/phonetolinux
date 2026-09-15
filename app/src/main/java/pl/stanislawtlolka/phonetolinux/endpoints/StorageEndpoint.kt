@@ -15,8 +15,11 @@ class StorageEndpoint : EndpointHandler {
     private val gson = Gson()
 
     override fun handle(requestLine: String, context: Context): EndpointResponse {
-        val relativePath = if (requestLine.contains("?path=")) {
-            requestLine.substringAfter("?path=").substringBefore(" ").trim()
+        // Extract URI from GET line (e.g. "GET /storage/list?path=DCIM HTTP/1.1" -> "/storage/list?path=DCIM")
+        val uri = requestLine.split(" ").getOrNull(1) ?: ""
+
+        val relativePath = if (uri.contains("?path=")) {
+            uri.substringAfter("?path=").trim()
         } else {
             ""
         }
