@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
@@ -26,7 +27,7 @@ import pl.stanislawtlolka.phonetolinux.ui.theme.PhonetolinuxTheme
 /**
  * Main entry point activity for PhoneToLinux Android client.
  * Enforces runtime permission initialization prior to desktop pairing to guarantee
- * background service stability on Android 14/15 (API 34/35).
+ * background service stability across Android 10 to 16+ (API 29-36).
  *
  * @author Stanisław Tlołka
  */
@@ -46,8 +47,11 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
         hasPermissions = hasAllPermissions()
-        if (hasPermissions && isPaired) {
-            triggerServiceAndSettings()
+        if (hasPermissions) {
+            checkAndRequestManageStoragePermission()
+            if (isPaired) {
+                triggerServiceAndSettings()
+            }
         }
     }
 
@@ -152,12 +156,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Evaluates whether all required Android 15 runtime permissions are granted
+    // Evaluates whether required runtime permissions are granted
     private fun hasAllPermissions(): Boolean {
         val permissions = getRequiredPermissionsList()
-        return permissions.all {
+        val standardGranted = permissions.all {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
+
+        // On Android 11+ (API 30-36+), verify file system access state
+        val storageGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            true
+        }
+
+        return standardGranted && storageGranted
     }
 
     // Verifies missing permissions and launches system permission dialogs
@@ -172,13 +185,31 @@ class MainActivity : ComponentActivity() {
             requestPermissionLauncher.launch(missingPermissions.toTypedArray())
         } else {
             hasPermissions = true
+            checkAndRequestManageStoragePermission()
             if (isPaired) {
                 triggerServiceAndSettings()
             }
         }
     }
 
-    // Single source of truth for required runtime permissions
+    // Prompts user for MANAGE_EXTERNAL_STORAGE on Android 11+ (API 30 to 36+)
+    private fun checkAndRequestManageStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    val fallbackIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    startActivity(fallbackIntent)
+                }
+            }
+        }
+    }
+
+    // Single source of truth for required runtime permissions (Android 10 - 16+)
     private fun getRequiredPermissionsList(): List<String> {
         val permissions = mutableListOf(
             Manifest.permission.READ_CONTACTS,
@@ -191,6 +222,12 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.CHANGE_NETWORK_STATE,
             Manifest.permission.CHANGE_WIFI_STATE
         )
+
+        // Storage permissions legacy fallback (Android 10 / API 29)
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             permissions.add(Manifest.permission.ANSWER_PHONE_CALLS)
@@ -299,7 +336,7 @@ fun PermissionRequestScreen(onRequestPermissions: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "To sync SMS messages, contacts, and phone calls with Linux, PhoneToLinux requires system permissions before desktop pairing.",
+            text = "To sync SMS, contacts, calls, and file storage with Linux, PhoneToLinux requires system permissions before desktop pairing.",
             style = MaterialTheme.typography.bodyMedium
         )
         Spacer(modifier = Modifier.height(32.dp))
