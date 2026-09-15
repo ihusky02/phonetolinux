@@ -66,8 +66,8 @@ class PhoneServerService : Service() {
         DeleteConversationEndpoint(),
         CallEndpoint(),
         SendSmsEndpoint(),
-        BluetoothAudioEndpoint()
-                StorageEndpoint()
+        BluetoothAudioEndpoint(),
+        StorageEndpoint()
     )
 
     companion object {
