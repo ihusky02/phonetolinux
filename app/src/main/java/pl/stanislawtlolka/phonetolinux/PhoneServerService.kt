@@ -27,6 +27,7 @@ import pl.stanislawtlolka.phonetolinux.endpoints.ConversationsEndpoint
 import pl.stanislawtlolka.phonetolinux.endpoints.DeleteConversationEndpoint
 import pl.stanislawtlolka.phonetolinux.endpoints.MessagesEndpoint
 import pl.stanislawtlolka.phonetolinux.endpoints.SendSmsEndpoint
+import pl.stanislawtlolka.phonetolinux.endpoints.StorageEndpoint
 import pl.stanislawtlolka.phonetolinux.security.UdpDiscoveryServer
 import kotlinx.coroutines.*
 import java.io.BufferedReader
@@ -66,6 +67,7 @@ class PhoneServerService : Service() {
         CallEndpoint(),
         SendSmsEndpoint(),
         BluetoothAudioEndpoint()
+                StorageEndpoint()
     )
 
     companion object {
