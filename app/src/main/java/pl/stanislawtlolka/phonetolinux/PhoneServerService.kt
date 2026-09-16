@@ -27,8 +27,8 @@ import pl.stanislawtlolka.phonetolinux.endpoints.ConversationsEndpoint
 import pl.stanislawtlolka.phonetolinux.endpoints.DeleteConversationEndpoint
 import pl.stanislawtlolka.phonetolinux.endpoints.MessagesEndpoint
 import pl.stanislawtlolka.phonetolinux.endpoints.SendSmsEndpoint
-import pl.stanislawtlolka.phonetolinux.endpoints.StorageEndpoint
 import pl.stanislawtlolka.phonetolinux.security.UdpDiscoveryServer
+import pl.stanislawtlolka.phonetolinux.server.WebDavServer
 import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -42,7 +42,7 @@ import java.util.Collections
  * Manages the network socket, SSE stream (/sms_stream),
  * monitors telephony states (incoming calls) universally across all Android versions,
  * UDP discovery listener for auto-IP detection,
- * and delegates standard HTTP requests to appropriate endpoint handlers.
+ * embedded WebDAV file server, and delegates standard HTTP requests to appropriate endpoint handlers.
  *
  * @author Stanisław Tlołka
  */
@@ -55,8 +55,9 @@ class PhoneServerService : Service() {
     private var telephonyCallback: Any? = null
     private var legacyPhoneStateListener: Any? = null
     private var udpDiscoveryServer: UdpDiscoveryServer? = null
+    private var webDavServer: WebDavServer? = null
 
-    // Registry of all available server endpoint plugins
+    // Registry of all available server endpoint plugins (StorageEndpoint removed in favor of WebDAV)
     private val endpoints = listOf(
         PingEndpoint(),
         ContactsEndpoint(),
@@ -66,13 +67,13 @@ class PhoneServerService : Service() {
         DeleteConversationEndpoint(),
         CallEndpoint(),
         SendSmsEndpoint(),
-        BluetoothAudioEndpoint(),
-        StorageEndpoint()
+        BluetoothAudioEndpoint()
     )
 
     companion object {
         const val CHANNEL_ID = "PhoneToLinuxChannel"
         const val PORT = 5000
+        const val WEBDAV_PORT = 5001
         private const val TAG = "PhoneToLinuxServer"
 
         private val clients = Collections.synchronizedList(mutableListOf<PrintWriter>())
@@ -160,9 +161,22 @@ class PhoneServerService : Service() {
 
         registerCallStateListener()
         startHttpServer()
+        startWebDavServer()
         startUdpDiscoveryServer()
 
         return START_STICKY
+    }
+
+    private fun startWebDavServer() {
+        try {
+            if (webDavServer == null) {
+                webDavServer = WebDavServer(WEBDAV_PORT)
+                webDavServer?.start()
+                Log.d(TAG, "WebDAV Server started successfully on port $WEBDAV_PORT.")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start WebDAV Server: ${e.message}", e)
+        }
     }
 
     private fun startUdpDiscoveryServer() {
@@ -339,7 +353,6 @@ class PhoneServerService : Service() {
             }
 
             // --- PLUGIN SYSTEM ---
-            // --- PLUGIN SYSTEM ---
             val handler = endpoints.find { requestLine.contains(it.path) }
             val statusCode: String
             val responseBody: String
@@ -377,6 +390,14 @@ class PhoneServerService : Service() {
 
         udpDiscoveryServer?.stop()
         udpDiscoveryServer = null
+
+        try {
+            webDavServer?.stop()
+            webDavServer = null
+            Log.d(TAG, "WebDAV Server stopped.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping WebDAV Server: ${e.message}")
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && telephonyCallback != null) {
             try {
