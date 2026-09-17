@@ -13,6 +13,8 @@ What works...
 - Securing configuration files and data with a 256-bit HMAC key
 
 - Browsing, copying, and downloading files to and from the phone
+
+- Added self update function (need to check, if it work ...)
   
 
 What doesn't work...
