@@ -1,29 +1,19 @@
-#phonetolinux
+# PhoneToLinux (Android)
 
-An application that integrates Android with the Linux environment... allowing you to manage your phone from your computer.
+A small service app to bridge your Android phone with a Linux desktop. Sync notifications, messages, calls, and files seamlessly.
 
-What works...
+## Key Features
+- **Notification Sync**: Forward phone notifications to your Linux desktop.
+- **SMS & Calls**: Read and send SMS, receive incoming call alerts, and trigger calls from your computer.
+- **File Sharing**: Access your phone's files via an embedded WebDAV server.
+- **Auto-Discovery**: Automatic device detection on the local network via UDP.
 
-- Making/receiving calls
+## Technical Documentation
+For detailed technical information, architecture overview, and API details, please refer to:
+- [Technical Documentation (English)](docs/TECHNICAL_DOCUMENTATION.md)
+- [Dokumentacja Techniczna (Polski)](docs/DOKUMENTACJA_TECHNICZNA.md)
 
-- Auto-detection of new IP addresses and configuration updates upon network changes
-
-- Sending/reading SMS messages
-
-- Securing configuration files and data with a 256-bit HMAC key
-
-- Browsing, copying, and downloading files to and from the phone
-
-- Added self update function (need to check, if it work ...)
-  
-
-What doesn't work...
-
-- MMS
-
-- Emojis
-
-- Automatic IP switching (to eliminate the need to manually enter the IP address to view files in the built-in file explorer)
-
-
-From now you can download a .deb file from https://drive.google.com/file/d/1eF4m9UT1mH2arVEBpeOxNP5sItiuguIU/view?usp=drive_link (because I don`t want play anymore with f***ng launchpad dependences)
+## Current Version
+**V3.2.0**
+- Added support for sending incoming call events to the desktop client.
+- Improved foreground service stability on Android 14+.
