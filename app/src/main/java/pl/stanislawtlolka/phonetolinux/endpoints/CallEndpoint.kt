@@ -130,7 +130,7 @@ class CallEndpoint : EndpointHandler {
             val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
             var success = false
 
-            if (telecomManager != null) {
+            if (telecomManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 @Suppress("MissingPermission")
                 try {
                     success = telecomManager.endCall()

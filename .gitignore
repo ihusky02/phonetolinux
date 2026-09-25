@@ -20,3 +20,8 @@ swieze_logi.txt
 .idea/
 /phonetolinux-release-key.jks
 /app/release/
+key.properties
+keystore.properties
+*.jks
+*.keystore
+*.pepk
