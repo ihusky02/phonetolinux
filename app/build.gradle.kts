@@ -15,8 +15,8 @@ android {
         applicationId = "pl.stanislawtlolka.phonetolinux"
         minSdk = 30
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.0.6"
+        versionCode = 12
+        versionName = "1.0.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

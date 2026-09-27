@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
@@ -48,7 +47,6 @@ class MainActivity : ComponentActivity() {
     ) { _ ->
         hasPermissions = hasAllPermissions()
         if (hasPermissions) {
-            checkAndRequestManageStoragePermission()
             if (isPaired) {
                 triggerServiceAndSettings()
             }
@@ -159,18 +157,9 @@ class MainActivity : ComponentActivity() {
     // Evaluates whether required runtime permissions are granted
     private fun hasAllPermissions(): Boolean {
         val permissions = getRequiredPermissionsList()
-        val standardGranted = permissions.all {
+        return permissions.all {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
-
-        // On Android 11+ (API 30-36+), verify file system access state
-        val storageGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else {
-            true
-        }
-
-        return standardGranted && storageGranted
     }
 
     // Verifies missing permissions and launches system permission dialogs
@@ -185,26 +174,8 @@ class MainActivity : ComponentActivity() {
             requestPermissionLauncher.launch(missingPermissions.toTypedArray())
         } else {
             hasPermissions = true
-            checkAndRequestManageStoragePermission()
             if (isPaired) {
                 triggerServiceAndSettings()
-            }
-        }
-    }
-
-    // Prompts user for MANAGE_EXTERNAL_STORAGE on Android 11+ (API 30 to 36+)
-    private fun checkAndRequestManageStoragePermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    val fallbackIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    startActivity(fallbackIntent)
-                }
             }
         }
     }
@@ -223,8 +194,12 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.CHANGE_WIFI_STATE
         )
 
-        // Storage permissions legacy fallback (Android 10 / API 29)
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
+        // Storage and Media permissions based on Android version
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
+            permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
+            permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
             permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
