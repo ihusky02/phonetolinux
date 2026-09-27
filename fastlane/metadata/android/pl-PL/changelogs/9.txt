@@ -1,0 +1,1 @@
+Zaktualizowano konfigurację dla Kotlina 2.0 i AGP 8.7, target SDK do 36 oraz min SDK do 30.
