@@ -1,5 +1,7 @@
 # Dokumentacja Techniczna - PhoneToLinux (Android)
 
+> **Deklaracja Uprawnień Google Play:** Dokumentacja techniczna i uzasadnienie uprawnień dla zespołu weryfikacyjnego Google Play znajduje się w pliku [GOOGLE_PLAY_PERMISSIONS_DECLARATION.md](GOOGLE_PLAY_PERMISSIONS_DECLARATION.md).
+
 ## 1. Wstęp
 PhoneToLinux to aplikacja na system Android, która służy jako most (bridge) pomiędzy urządzeniem mobilnym a komputerem z systemem Linux. Działa jako serwer udostępniający funkcjonalności telefonu (SMS, połączenia, powiadomienia, kontakty i pliki) klientowi stacjonarnemu.
 

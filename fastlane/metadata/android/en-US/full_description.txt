@@ -1,0 +1,11 @@
+PhoneToLinux seamlessly bridges your Android smartphone with your Linux desktop over your local network.
+
+Key Features:
+- Make and receive voice calls from your desktop.
+- Read and send SMS messages directly from your computer.
+- Real-time notification forwarding and contact synchronization.
+- File access and transfer via embedded WebDAV server.
+- Complete Privacy: All communication occurs strictly over your local Wi-Fi network without any cloud servers.
+
+For full functionality, a companion application for Fedora Linux is required, available via COPR repository:
+#> dnf copr enable stanislav1988/phonetolinuxdesktop

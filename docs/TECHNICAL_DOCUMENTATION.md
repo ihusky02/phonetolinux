@@ -1,5 +1,7 @@
 # Technical Documentation - PhoneToLinux (Android)
 
+> **Google Play Permissions Declaration:** For the official permission declaration, policy compliance justification, and technical architecture explanation for Google Play review, see [Google Play Permissions Declaration](GOOGLE_PLAY_PERMISSIONS_DECLARATION.md).
+
 ## 1. Introduction
 PhoneToLinux is an Android application designed to bridge the gap between an Android device and a Linux desktop environment. It serves as a server that exposes phone functionalities (SMS, calls, notifications, contacts, and files) to a desktop client.
 

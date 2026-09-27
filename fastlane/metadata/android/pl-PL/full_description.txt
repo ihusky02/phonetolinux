@@ -4,4 +4,8 @@ Główne funkcje:
 - Wykonywanie i odbieranie połączeń głosowych z pulpitu.
 - Wysyłanie oraz odbieranie wiadomości SMS.
 - Przesyłanie powiadomień i synchronizacja kontaktów.
+- Dostęp do plików telefonu przez serwer WebDAV.
 - Pełna prywatność: połączenie odbywa się wyłącznie w sieci lokalnej bez udziału chmury.
+
+Dla pełnej funkcjonalności wymagana jest aplikacja towarzysząca dla systemu Fedora Linux, dostępna w repozytorium COPR:
+#> dnf copr enable stanislav1988/phonetolinuxdesktop
