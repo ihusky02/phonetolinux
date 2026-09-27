@@ -1,0 +1,26 @@
+Categories:
+  - System
+License: GPL-3.0-or-later
+AuthorName: Stanisław Tlołka
+AuthorEmail: stanislawtlolka@gmail.com
+WebSite: https://github.com/ihusky02/phonetolinux
+SourceCode: https://github.com/ihusky02/phonetolinux
+IssueTracker: https://github.com/ihusky02/phonetolinux/issues
+
+AutoName: PhoneToLinux
+
+RepoType: git
+Repo: https://github.com/ihusky02/phonetolinux.git
+
+Builds:
+  - versionName: 1.0.6
+    versionCode: 9
+    commit: v1.0.6
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 1.0.6
+CurrentVersionCode: 9
