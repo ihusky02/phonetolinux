@@ -1,6 +1,7 @@
 package pl.stanislawtlolka.phonetolinux.network
 
 import pl.stanislawtlolka.phonetolinux.data.PairingRequest
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.POST
@@ -14,13 +15,5 @@ interface PairingApiService {
     suspend fun sendPairingRequest(
         @Url url: String,
         @Body request: PairingRequest
-    ): Response<PairingResponse>
+    ): Response<ResponseBody>
 }
-
-/**
- * Response model received from the Linux desktop listener service.
- */
-data class PairingResponse(
-    val status: String,
-    val message: String
-)

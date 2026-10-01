@@ -1,5 +1,6 @@
 package pl.stanislawtlolka.phonetolinux.ui.theme
 
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -102,8 +103,12 @@ fun PairingScreen(onPairingSuccess: (String) -> Unit) {
                         )
 
                         val response = api.sendPairingRequest("http://$targetIp:5000/pair/", requestPayload)
+                        val rawBody = response.body()?.string() ?: ""
+                        Log.d("PairingScreen", "HTTP Response Code: ${response.code()}, Body: $rawBody")
 
-                        if (response.isSuccessful && response.body()?.status == "SUCCESS") {
+                        val isPairedOk = response.isSuccessful || response.code() in 200..299
+
+                        if (isPairedOk) {
                             launch(Dispatchers.Main) {
                                 Toast.makeText(context, HttpUtils.getLocalizedText("toast_success"), Toast.LENGTH_LONG).show()
                                 // Delegate server startup, IP storage and view transition to MainActivity
@@ -116,6 +121,7 @@ fun PairingScreen(onPairingSuccess: (String) -> Unit) {
                             }
                         }
                     } catch (e: Exception) {
+                        Log.e("PairingScreen", "Pairing Exception: ${e.javaClass.simpleName} - ${e.message}", e)
                         launch(Dispatchers.Main) {
                             statusMessage = "${HttpUtils.getLocalizedText("connection_error")} ${e.localizedMessage}"
                             isLoading = false
